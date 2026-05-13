@@ -19,7 +19,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 function isAllowed(req, res, next) {
     let cookies = req.cookies;
     let loginToken = db.maindb.get('admin.loginToken').value();
-    if ('loginToken' in cookies) {
+    if (loginToken && 'loginToken' in cookies && loginToken !== '') {
         if (cookies.loginToken === loginToken) next();
         else res.clearCookie('token').redirect('/login');
     } else res.redirect('/login');
@@ -43,18 +43,16 @@ routes.get('/login', (req, res) => {
 });
 
 routes.post('/login', (req, res) => {
-    if ('username' in req.body) {
-        if ('password' in req.body) {
-            let rUsername = db.maindb.get('admin.username').value();
-            let rPassword = db.maindb.get('admin.password').value();
-            let passwordMD5 = crypto.createHash('md5').update(req.body.password.toString()).digest("hex");
-            if (req.body.username.toString() === rUsername && passwordMD5 === rPassword) {
-                let loginToken = crypto.createHash('md5').update((Math.random()).toString() + (new Date()).toString()).digest("hex");
-                db.maindb.get('admin').assign({ loginToken }).write();
-                res.cookie('loginToken', loginToken).redirect('/');
-            } else return res.redirect('/login?e=badLogin');
-        } else return res.redirect('/login?e=missingPassword');
-    } else return res.redirect('/login?e=missingUsername');
+    if ('username' in req.body && 'password' in req.body) {
+        let rUsername = db.maindb.get('admin.username').value();
+        let rPassword = db.maindb.get('admin.password').value();
+        let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
+        if (String(req.body.username) === rUsername && passwordMD5 === rPassword) {
+            let loginToken = crypto.createHash('md5').update((Math.random()).toString() + (new Date()).toString()).digest("hex");
+            db.maindb.get('admin').assign({ loginToken }).write();
+            res.cookie('loginToken', loginToken).redirect('/');
+        } else return res.redirect('/login?e=badLogin');
+    } else return res.redirect('/login?e=missingData');
 });
 
 routes.get('/logout', isAllowed, (req, res) => {
@@ -87,8 +85,8 @@ routes.post('/builder', isAllowed, (req, res) => {
         }
     });
     else {
-        logManager.log(CONST.logTypes.error, "Build Failed - " + error);
-        res.json({ error });
+        logManager.log(CONST.logTypes.error, "Build Failed - Missing URI or Port");
+        res.json({ error: "Missing URI or Port" });
     }
 });
 

