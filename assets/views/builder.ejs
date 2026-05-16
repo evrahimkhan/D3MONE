@@ -103,7 +103,7 @@
             gtag('event', 'build', {
                 'builduri': URI + ':' + PORT
             });
-            $.post("/builder?uri=" + URI + "&port=" + PORT, function (data) {
+            $.post("/builder", { uri: URI, port: PORT }, function (data) {
                 if (!data.error) {
                     isDone = true
                 } else showNotification('#f03434', data.error)

