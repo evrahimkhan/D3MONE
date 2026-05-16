@@ -73,6 +73,6 @@ app.listen(CONST.web_port);
 
 app.set('view engine', 'ejs');
 app.set('views', './assets/views');
-app.set('trust proxy', true);
+app.set('trust proxy', 'loopback');
 app.use(express.static(__dirname + '/assets/webpublic'));
 app.use(require('./includes/expressRoutes'));
