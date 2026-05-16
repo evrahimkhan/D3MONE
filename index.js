@@ -30,9 +30,7 @@ client_io.sockets.pingInterval = 30000;
 client_io.on('connection', (socket) => {
     socket.emit('welcome');
     let clientParams = socket.handshake.query;
-    let clientAddress = socket.request.connection;
-
-    let clientIP = clientAddress.remoteAddress.substring(clientAddress.remoteAddress.lastIndexOf(':') + 1);
+    let clientIP = socket.handshake.address.substring(socket.handshake.address.lastIndexOf(':') + 1);
     let clientGeo = geoip.lookup(clientIP);
     if (!clientGeo) clientGeo = {}
 

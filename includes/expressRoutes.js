@@ -21,7 +21,7 @@ function isAllowed(req, res, next) {
     let loginToken = db.maindb.get('admin.loginToken').value();
     if (loginToken && 'loginToken' in cookies && loginToken !== '') {
         if (cookies.loginToken === loginToken) next();
-        else res.clearCookie('token').redirect('/login');
+        else res.clearCookie('loginToken').redirect('/login');
     } else res.redirect('/login');
     // next();
 }
@@ -51,9 +51,10 @@ routes.post('/login', (req, res) => {
         return res.redirect('/login?e=tooManyRequests');
     }
     
-    // Patch 8: Prevent Memory Leak
-    if (Object.keys(loginRateLimit).length > 1000) {
-        for (let key in loginRateLimit) delete loginRateLimit[key];
+    // Patch 7: Prevent Memory Leak with FIFO eviction (no global bypass)
+    const keys = Object.keys(loginRateLimit);
+    if (keys.length > 1000) {
+        delete loginRateLimit[keys[0]];
     }
 
     loginRateLimit[ip] = { lastAttempt: now };

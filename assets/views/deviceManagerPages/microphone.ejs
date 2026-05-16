@@ -47,7 +47,7 @@
                 <td><%= item.originalName %></td>
                 <td class="collapsing">
                     <div class="ui buttons">
-                        <button onclick="playClip('<%= item.path %>')" class="ui button blue">Play</button>
+                        <button onclick="playClip('<%= item.path.replace(/'/g, "\\'") %>')" class="ui button blue">Play</button>
                         <div class="or"></div>
                         <a href="<%= item.path %>" download="<%= item.originalName %>"
                             class="ui positive button">Save</a>

