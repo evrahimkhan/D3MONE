@@ -1,4 +1,4 @@
-# Project closed <a href="https://t.me/+egpQDeBtGk8wYWU1"> Join for 100% free tools and education </a>.
+ <a href="https://t.me/+egpQDeBtGk8wYWU1"> Join for 100% free tools and education </a>.
 <p align="center">
 <img src="https://github.com/D3VL/L3MON/raw/master/server/assets/webpublic/logo.png" height="60"><br>
 A cloud-based remote Android management suite, powered by NodeJS 
