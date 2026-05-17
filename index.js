@@ -36,10 +36,13 @@ client_io.on('connection', (socket) => {
         return socket.disconnect();
     }
 
-    // Patch 5: Reliable IP extraction for IPv6
+    // Patch 5: Reliable IP extraction for IPv6 and IPv4-mapped
     let clientIP = socket.handshake.address;
-    if (clientIP.includes(':')) {
+    if (clientIP.includes('::ffff:')) {
         clientIP = clientIP.split(':').pop();
+    } else if (clientIP.includes(':')) {
+        // Native IPv6 - keep as is for GeoIP if possible, or handle specifically
+        // For now, ensure we don't just pop a random segment
     }
     
     let clientGeo = geoip.lookup(clientIP);

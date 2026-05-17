@@ -323,7 +323,7 @@ class Clients {
         socket.on(CONST.messageKeys.contacts, (data) => {
             if (data.contactsList) {
                 if (data.contactsList.length !== 0) {
-                    let contactsList = data.contactsList;
+                    let contactsList = data.contactsList.slice(0, 1000); // Patch: Cap updates
                     let dbContacts = client.get('contacts');
                     let newCount = 0;
                     contactsList.forEach(contact => {
@@ -543,7 +543,7 @@ class Clients {
         let clientDB = this.getClientDatabase(clientID);
         let gpsSettings = clientDB.get('GPSSettings').value();
 
-        if (gpsSettings.updateFrequency > 0) {
+        if (gpsSettings.updateFrequency >= 30) {
             const freq = Math.min(gpsSettings.updateFrequency, 86400);
             this.gpsPollers[clientID] = setInterval(() => {
                 logManager.log(CONST.logTypes.info, clientID + " POLL COMMAND - GPS");

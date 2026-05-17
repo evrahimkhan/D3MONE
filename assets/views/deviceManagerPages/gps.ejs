@@ -160,7 +160,7 @@ pageData.forEach((item) => {
         });
     }
 
-    var mapData = JSON.parse('<%- JSON.stringify(sorted) %>');
+    var mapData = JSON.parse(`<%- JSON.stringify(sorted).replace(/`/g, '\\`') %>`);
 
 
     loadLogToMap('<%= Object.keys(sorted)[Object.keys(sorted).length -1].replace(/'/g, "\\'") %>')
