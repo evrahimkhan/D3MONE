@@ -19,7 +19,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 function isAllowed(req, res, next) {
     let cookies = req.cookies;
     let loginToken = db.maindb.get('admin.loginToken').value();
-    if (loginToken && 'loginToken' in cookies && loginToken !== '') {
+    if (loginToken && cookies && 'loginToken' in cookies && loginToken !== '') {
         if (cookies.loginToken === loginToken) next();
         else res.clearCookie('loginToken').redirect('/login');
     } else res.redirect('/login');
