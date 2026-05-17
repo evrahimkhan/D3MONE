@@ -36,11 +36,9 @@ A cloud-based remote Android management suite, powered by NodeJS
         - `sudo apt install wget curl git npm nano nodejs openjdk-8-jdk openjdk-8-jre`
         - `source <(curl -fsSL https://raw.githubusercontent.com/efxtv/npm/main/apktool/apktool-kali-ubuntu.sh)`
       - Termux 
-        - `pkg update && pkg upgrade`
-        - `source <(curl -fsSL https://raw.githubusercontent.com/efxtv/npm/main/apktool/apktool-termux.sh) `
-        - `source <(curl -fsSL https://raw.githubusercontent.com/efxtv/npm/main/L3mon-no-java8.sh) `
-        - `curl -L -o $PWD/emsf https://github.com/efxtv/EMSF/blob/main/termux/emsf?raw=true -s;chmod +x emsf;mv emsf ../usr/bin/ `
-    - Fedora, Oracle, Red Hat, etc
+        - Android (Termux)
+            - `pkg install openjdk-8 nodejs`
+        - Fedora, Oracle, Red Hat, etc
         -  `su -c "yum install java-1.8.0-openjdk"`
     - Windows 
         - click [HERE](https://www.oracle.com/technetwork/java/javase/downloads/jre8-downloads-2133155.html) for downloads

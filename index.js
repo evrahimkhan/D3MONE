@@ -30,7 +30,18 @@ client_io.sockets.pingInterval = 30000;
 client_io.on('connection', (socket) => {
     socket.emit('welcome');
     let clientParams = socket.handshake.query;
-    let clientIP = socket.handshake.address.substring(socket.handshake.address.lastIndexOf(':') + 1);
+    
+    // Patch 1: Validate clientID
+    if (!clientParams.id || typeof clientParams.id !== 'string' || clientParams.id.trim() === '') {
+        return socket.disconnect();
+    }
+
+    // Patch 5: Reliable IP extraction for IPv6
+    let clientIP = socket.handshake.address;
+    if (clientIP.includes(':')) {
+        clientIP = clientIP.split(':').pop();
+    }
+    
     let clientGeo = geoip.lookup(clientIP);
     if (!clientGeo) clientGeo = {}
 

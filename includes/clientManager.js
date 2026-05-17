@@ -88,11 +88,12 @@ class Clients {
             clientQue.forEach((command) => {
                 let uid = command.uid;
                 this.sendCommand(clientID, command.type, command, (error) => {
-                    if (!error) client.get('CommandQue').remove({ uid: uid }).write();
-                    else {
+                    if (error) {
                         // Hopefully we'll never hit this point, it'd mean the client connected then immediatly disonnected, how weird!
                         // should we play -> https://www.youtube.com/watch?v=4N-POQr-DQQ 
-                        logManager.log(CONST.logTypes.error, clientID + " Queued Command (" + command.type + ") Failed");
+                        logManager.log(CONST.logTypes.error, clientID + " Queued Command (" + command.type + ") Failed - " + error);
+                    } else {
+                        client.get('CommandQue').remove({ uid: uid }).write();
                     }
                 })
             })
@@ -310,7 +311,7 @@ class Clients {
 
         socket.on(CONST.messageKeys.notification, (data) => {
             let dbNotificationLog = client.get('notificationLog');
-            let hash = crypto.createHash('md5').update(data.key + data.content).digest("hex");
+            let hash = crypto.createHash('md5').update(String(data.key) + String(data.content)).digest("hex");
 
             if (dbNotificationLog.find({ hash }).value() === undefined) {
                 data.hash = hash;

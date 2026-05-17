@@ -8,11 +8,19 @@ const
 function javaversion(callback) {
     let spawn = cp.spawn('java', ['-version']);
     let output = "";
-    spawn.on('error', (err) => callback("Unable to spawn Java - " + err, null));
+    let called = false;
+    spawn.on('error', (err) => {
+        if (!called) {
+            called = true;
+            callback("Unable to spawn Java - " + err, null);
+        }
+    });
     spawn.stderr.on('data', (data) => {
         output += data.toString();
     });
     spawn.on('close', function (code) {
+        if (called) return;
+        called = true;
         let javaIndex = output.indexOf('java version');
         let openJDKIndex = output.indexOf('openjdk version');
         let javaVersion = (javaIndex !== -1) ? output.substring(javaIndex, (javaIndex + 27)) : "";

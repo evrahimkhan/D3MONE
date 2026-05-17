@@ -19,7 +19,10 @@ db.defaults({
 class clientdb {
     constructor(clientID) {
         // Sanitize clientID to prevent path traversal
-        let safeClientID = clientID.toString().replace(/[^a-zA-Z0-9_-]/g, '') || 'unknown';
+        let safeClientID = (clientID || 'unknown').toString().replace(/[^a-zA-Z0-9_-]/g, '');
+        if (safeClientID === '') {
+            safeClientID = 'unknown_' + crypto.randomBytes(4).toString('hex');
+        }
         let cdb = lowdb(new FileSync('./clientData/' + safeClientID + '.json'))
         cdb.defaults({
             clientID,
