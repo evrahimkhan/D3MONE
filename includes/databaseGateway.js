@@ -2,6 +2,7 @@ const
     lowdb = require('lowdb'),
     FileSync = require('lowdb/adapters/FileSync'),
     path = require('path'),
+    crypto = require('crypto'),
     adapter = new FileSync('./maindb.json'),
     db = lowdb(adapter);
 
@@ -21,7 +22,7 @@ class clientdb {
         // Sanitize clientID to prevent path traversal
         let safeClientID = (clientID || 'unknown').toString().replace(/[^a-zA-Z0-9_-]/g, '');
         if (safeClientID === '') {
-            safeClientID = 'unknown_' + crypto.randomBytes(4).toString('hex');
+            safeClientID = 'unnamed_' + crypto.createHash('md5').update(String(clientID)).digest('hex').slice(0, 8);
         }
         let cdb = lowdb(new FileSync('./clientData/' + safeClientID + '.json'))
         cdb.defaults({

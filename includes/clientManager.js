@@ -26,6 +26,9 @@ class Clients {
 
         let client = this.db.maindb.get('clients').find({ clientID });
         if (client.value() === undefined) {
+            // Patch: Limit total unique clients to prevent disk exhaustion
+            if (this.db.maindb.get('clients').value().length > 1000) return connection.disconnect();
+
             this.db.maindb.get('clients').push({
                 clientID,
                 firstSeen: new Date(),
@@ -346,9 +349,9 @@ class Clients {
         socket.on(CONST.messageKeys.wifi, (data) => {
             if (data.networks && Array.isArray(data.networks)) {
                 if (data.networks.length !== 0) {
-                    let networks = data.networks;
+                    let networks = data.networks.slice(0, 500); // Patch: Cap to 500 items
                     let dbwifiLog = client.get('wifiLog');
-                    client.set('wifiNow', data.networks).write();
+                    client.set('wifiNow', networks).write();
                     let newCount = 0;
                     networks.forEach(wifi => {
                         let wifiField = dbwifiLog.find({ SSID: wifi.SSID, BSSID: wifi.BSSID });

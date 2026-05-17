@@ -37,7 +37,7 @@ npm install socket.io@2.2.0 --save # Force correct version for this codebase
 
 # 4. Apply EJS Syntax Fixes (Critical for newer EJS versions)
 echo "🛠️ Patching EJS templates for compatibility..."
-find assets/views -name "*.ejs" -exec sed -i "s|<% include \(.*\) %>|<%- include('\1') %>|g" {} +
+find assets/views -name "*.ejs" -exec sed -i "s|<% include \([^'\" ]*\) %>|<%- include('\1') %>|g" {} +
 echo "✅ EJS templates patched."
 
 # 5. Database Initialization
