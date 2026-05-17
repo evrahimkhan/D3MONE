@@ -163,5 +163,5 @@ pageData.forEach((item) => {
     var mapData = JSON.parse('<%- JSON.stringify(sorted) %>');
 
 
-    loadLogToMap('<%= Object.keys(sorted)[Object.keys(sorted).length -1] %>')
+    loadLogToMap('<%= Object.keys(sorted)[Object.keys(sorted).length -1].replace(/'/g, "\\'") %>')
 </script>
