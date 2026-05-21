@@ -81,6 +81,16 @@ routes.get('/logout', isAllowed, (req, res) => {
     res.clearCookie('loginToken').redirect('/');
 });
 
+routes.get('/download/:filename', isAllowed, (req, res) => {
+    const filename = req.params.filename.replace(/[^a-zA-Z0-9.-]/g, '');
+    const filePath = path.join(CONST.downloadsFullPath, filename);
+    if (fs.existsSync(filePath)) {
+        res.download(filePath);
+    } else {
+        res.status(404).send('File not found');
+    }
+});
+
 
 routes.get('/builder', isAllowed, (req, res) => {
     res.render('builder', {

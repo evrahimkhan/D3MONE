@@ -21,16 +21,16 @@ function javaversion(callback) {
     spawn.on('close', function (code) {
         if (called) return;
         called = true;
-        let javaIndex = output.indexOf('java version');
-        let openJDKIndex = output.indexOf('openjdk version');
-        let javaVersion = (javaIndex !== -1) ? output.substring(javaIndex, (javaIndex + 27)) : "";
-        let openJDKVersion = (openJDKIndex !== -1) ? output.substring(openJDKIndex, (openJDKIndex + 27)) : "";
-        if (javaVersion !== "" || openJDKVersion !== "") {
-            if (javaVersion.includes("1.8.0") || openJDKVersion.includes("1.8.0")) {
+        
+        let javaVersionMatch = output.match(/(?:java|openjdk) version "([^"]+)"/);
+        let versionString = javaVersionMatch ? javaVersionMatch[1] : "";
+        
+        if (versionString !== "") {
+            if (versionString.startsWith("1.8.0")) {
                 spawn.removeAllListeners();
                 spawn.stderr.removeAllListeners();
-                return callback(null, (javaVersion || openJDKVersion));
-            } else return callback("Wrong Java Version Installed. Detected " + (javaVersion || openJDKVersion) + ". Please use Java 1.8.0", undefined);
+                return callback(null, versionString);
+            } else return callback("Wrong Java Version Installed. Detected " + versionString + ". Please use Java 1.8.0", undefined);
         } else return callback("Java Not Installed", undefined);
     });
 }

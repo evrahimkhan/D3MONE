@@ -85,7 +85,12 @@ class Clients {
         let client = this.getClientDatabase(clientID);
 
         logManager.log(CONST.logTypes.info, clientID + " Connected")
-        socket.on('disconnect', () => this.clientDisconnect(clientID));
+        socket.on('disconnect', () => {
+            // Guard: Only disconnect if this socket is the active one
+            if (this.clientConnections[clientID] === socket) {
+                this.clientDisconnect(clientID);
+            }
+        });
 
         // Run the queued requests for this client
         let clientQue = client.get('CommandQue').value();
@@ -254,7 +259,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.mic, (data) => {
-            if (data.file && data.name && data.buffer) {
+            if (data.file && data.name && typeof data.name === 'string' && data.buffer) {
                 logManager.log(CONST.logTypes.info, "Recieving " + data.name + " from " + clientID);
 
                 // Patch 4: Enforce size limit (10MB for voice)

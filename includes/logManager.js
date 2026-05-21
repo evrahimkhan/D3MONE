@@ -2,6 +2,7 @@ const db = require('./databaseGateway');
 
 module.exports = {
     log: (type, message) => {
+        if (!type || typeof type.name !== 'string') return;
         let logs = db.maindb.get('admin.logs');
         logs.push({
             "time": new Date(),
