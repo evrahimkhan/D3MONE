@@ -46,7 +46,7 @@ function patchAPK(URI, PORT, cb) {
         isBuilding = false;
         return cb('Invalid URI');
     }
-    let portInt = parseInt(PORT);
+    let portInt = parseInt(PORT, 10);
     if (isNaN(portInt) || portInt < 2048 || portInt > 25565) {
         isBuilding = false;
         return cb('Invalid Port');

