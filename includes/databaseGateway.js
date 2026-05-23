@@ -21,6 +21,10 @@ class clientdb {
     constructor(clientID) {
         // Sanitize clientID to prevent path traversal
         let safeClientID = (clientID || 'unknown').toString().replace(/[^a-zA-Z0-9_-]/g, '');
+        // Patch: Limit clientID length to prevent filesystem errors
+        if (safeClientID.length > 200) {
+            safeClientID = safeClientID.substring(0, 200);
+        }
         if (safeClientID === '') {
             safeClientID = 'unnamed_' + crypto.createHash('md5').update(String(clientID)).digest('hex').slice(0, 8);
         }
@@ -52,5 +56,4 @@ module.exports = {
     maindb: db,
     clientdb: clientdb,
 };
-
 

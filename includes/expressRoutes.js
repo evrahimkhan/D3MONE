@@ -3,7 +3,9 @@ const
     routes = express.Router(),
     cookieParser = require('cookie-parser'),
     bodyParser = require('body-parser'),
-    crypto = require('crypto');
+    crypto = require('crypto'),
+    fs = require('fs'),
+    path = require('path');
 
 let CONST = global.CONST;
 let db = global.db;
@@ -50,28 +52,38 @@ routes.post('/login', (req, res) => {
     if (loginRateLimit[ip] && now - loginRateLimit[ip].lastAttempt < 2000) {
         return res.redirect('/login?e=tooManyRequests');
     }
-    
-    // Patch 7: Prevent Memory Leak with FIFO eviction (no global bypass)
+
+    // Patch 7: Prevent Memory Leak with time-based eviction + hard cap
     const keys = Object.keys(loginRateLimit);
     if (keys.length > 1000) {
         delete loginRateLimit[keys[0]];
+    }
+    for (const key of Object.keys(loginRateLimit)) {
+        if (now - loginRateLimit[key].lastAttempt > 300000) { // 5 min TTL
+            delete loginRateLimit[key];
+        }
     }
 
     loginRateLimit[ip] = { lastAttempt: now };
 
     if ('username' in req.body && 'password' in req.body) {
+        // Guard against non-string input (e.g., arrays, objects)
+        if (typeof req.body.username !== 'string' || typeof req.body.password !== 'string') {
+            return res.redirect('/login?e=badLogin');
+        }
+
         let rUsername = db.maindb.get('admin.username').value();
         let rPassword = db.maindb.get('admin.password').value();
-        
-        // For now, keep MD5 but ensure it's a string. 
+
+        // For now, keep MD5 but ensure it's a string.
         // In a real upgrade, we'd use scrypt/bcrypt, but that requires resetting maindb.json.
         let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
-        
+
         if (String(req.body.username) === rUsername && passwordMD5 === rPassword) {
             // Patch 2: Secure Session Token
             let loginToken = crypto.randomBytes(32).toString('hex');
             db.maindb.get('admin').assign({ loginToken }).write();
-            res.cookie('loginToken', loginToken).redirect('/');
+            res.cookie('loginToken', loginToken, { httpOnly: true, sameSite: 'strict' }).redirect('/');
         } else return res.redirect('/login?e=badLogin');
     } else return res.redirect('/login?e=missingData');
 });
@@ -83,6 +95,7 @@ routes.get('/logout', isAllowed, (req, res) => {
 
 routes.get('/download/:filename', isAllowed, (req, res) => {
     const filename = req.params.filename.replace(/[^a-zA-Z0-9.-]/g, '');
+    if (!filename || filename === '.' || filename === '..') return res.status(400).send('Invalid filename');
     const filePath = path.join(CONST.downloadsFullPath, filename);
     if (fs.existsSync(filePath)) {
         res.download(filePath);
@@ -164,8 +177,8 @@ routes.post('/manage/:deviceid/:commandID', isAllowed, (req, res) => {
 
 routes.post('/manage/:deviceid/GPSPOLL/:speed', isAllowed, (req, res) => {
     const deviceID = req.params.deviceid.replace(/[^a-zA-Z0-9_-]/g, '');
-    const speed = parseInt(req.params.speed);
-    if (isNaN(speed)) return res.json({ error: 'Invalid Speed' });
+    const speed = parseInt(req.params.speed, 10);
+    if (isNaN(speed) || !Number.isInteger(Number(req.params.speed))) return res.json({ error: 'Invalid Speed' });
 
     clientManager.setGpsPollSpeed(deviceID, speed, (error) => {
         if (!error) res.json({ error: false })

