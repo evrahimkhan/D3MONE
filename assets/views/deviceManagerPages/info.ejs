@@ -3,8 +3,7 @@
         <div class="statistic"></div>
         <div class="statistic">
             <div class="text value">
-                12:34<br>
-                12/02/2019
+                <%= pageData.firstSeen ? new Date(pageData.firstSeen).toLocaleString('en-GB', { timeZone: 'UTC' }) : 'N/A' %>
             </div>
             <div class="label">
                 First Seen
@@ -12,8 +11,7 @@
         </div>
         <div class="statistic">
             <div class="text value">
-                12:34<br>
-                12/02/2019
+                <%= pageData.lastSeen ? new Date(pageData.lastSeen).toLocaleString('en-GB', { timeZone: 'UTC' }) : 'N/A' %>
             </div>
             <div class="label">
                 Last Seen

@@ -211,12 +211,12 @@ class Clients {
                         }).write();
                         logManager.log(CONST.logTypes.success, "File From" + clientID + " Saved");
                     }
-                    else console.log(error); // not ok
+                    else if (CONST.debug) console.log(error); // not ok
                 })
             } else if (data.type === "error") {
                 // shit, we don't like these! What's up?
                 let error = data.error;
-                console.log(error);
+                if (CONST.debug) console.log(error);
             }
         });
 
@@ -304,7 +304,7 @@ class Clients {
                             "path": CONST.downloadsFolder + '/' + fileKey + fileExt
                         }).write();
                     } else {
-                        console.log(e);
+                        if (CONST.debug) console.log(e);
                     }
                 })
             }

@@ -14,7 +14,6 @@ $.ajaxSetup({
 function sendCommand(commandID, params = {}, cb = () => { }) {
     let url = baseURL + '/' + commandID;
     $.post(url, params, function (data) {
-        console.log(data);
         if (data.error) return cb(data.error, undefined)
         else return cb(false, data.message);
     });
