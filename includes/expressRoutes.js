@@ -5,7 +5,8 @@ const
     bodyParser = require('body-parser'),
     crypto = require('crypto'),
     fs = require('fs'),
-    path = require('path');
+    path = require('path'),
+    rateLimit = require('express-rate-limit');
 
 let CONST = global.CONST;
 let db = global.db;
@@ -17,6 +18,14 @@ let apkBuilder = global.apkBuilder;
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+const loginLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 10, // 10 attempts per window per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => res.redirect('/login?e=tooManyRequests')
+});
 
 function isAllowed(req, res, next) {
     let cookies = req.cookies;
@@ -48,27 +57,7 @@ routes.get('/login', (req, res) => {
     res.render('login');
 });
 
-const loginRateLimit = {};
-routes.post('/login', (req, res) => {
-    // Simple Rate Limiting
-    const ip = req.ip;
-    const now = Date.now();
-    if (loginRateLimit[ip] && now - loginRateLimit[ip].lastAttempt < 2000) {
-        return res.redirect('/login?e=tooManyRequests');
-    }
-
-    // Patch 7: Prevent Memory Leak with time-based eviction + hard cap
-    const keys = Object.keys(loginRateLimit);
-    if (keys.length > 1000) {
-        delete loginRateLimit[keys[0]];
-    }
-    for (const key of Object.keys(loginRateLimit)) {
-        if (now - loginRateLimit[key].lastAttempt > 300000) { // 5 min TTL
-            delete loginRateLimit[key];
-        }
-    }
-
-    loginRateLimit[ip] = { lastAttempt: now };
+routes.post('/login', loginLimiter, (req, res) => {
 
     if ('username' in req.body && 'password' in req.body) {
         // Guard against non-string input (e.g., arrays, objects)
@@ -78,12 +67,37 @@ routes.post('/login', (req, res) => {
 
         let rUsername = db.maindb.get('admin.username').value();
         let rPassword = db.maindb.get('admin.password').value();
+        let passwordOK = false;
+        let needsMigration = false;
 
-        // For now, keep MD5 but ensure it's a string.
-        // In a real upgrade, we'd use scrypt/bcrypt, but that requires resetting maindb.json.
-        let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
+        // Support both legacy MD5 and new scrypt hashes.
+        // Scrypt hashes are stored as "scrypt:<salt>:<hash>" (hex).
+        if (rPassword && rPassword.startsWith('scrypt:')) {
+            // New format: scrypt:Nsalt:hash
+            const parts = rPassword.split(':');
+            if (parts.length === 3) {
+                const salt = Buffer.from(parts[1], 'hex');
+                const storedHash = Buffer.from(parts[2], 'hex');
+                const derived = crypto.scryptSync(String(req.body.password), salt, 64);
+                passwordOK = crypto.timingSafeEqual(derived, storedHash);
+            }
+        } else if (rPassword) {
+            // Legacy MD5 — check and migrate on success
+            let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
+            if (passwordMD5 === rPassword) {
+                passwordOK = true;
+                needsMigration = true;
+            }
+        }
 
-        if (String(req.body.username) === rUsername && passwordMD5 === rPassword) {
+        if (String(req.body.username) === rUsername && passwordOK) {
+            // Migrate MD5 to scrypt on successful login
+            if (needsMigration) {
+                const salt = crypto.randomBytes(16);
+                const derived = crypto.scryptSync(String(req.body.password), salt, 64);
+                db.maindb.get('admin').assign({ password: 'scrypt:' + salt.toString('hex') + ':' + derived.toString('hex') }).write();
+            }
+
             // Patch 2: Secure Session Token
             let loginToken = crypto.randomBytes(32).toString('hex');
             db.maindb.get('admin').assign({ loginToken }).write();

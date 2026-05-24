@@ -5,6 +5,7 @@ node_modules/
 maindb.json
 clientData/*.json
 !clientData/blank
+client_downloads/
 
 # Build Artifacts
 assets/webpublic/build.apk

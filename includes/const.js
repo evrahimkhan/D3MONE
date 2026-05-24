@@ -9,7 +9,7 @@ exports.control_port = 22222;
 exports.apkBuildPath = path.join(__dirname, '../assets/webpublic/build.apk')
 exports.apkSignedBuildPath = path.join(__dirname, '../assets/webpublic/build.s.apk')
 
-exports.downloadsFolder = '/client_downloads'
+exports.downloadsFolder = 'client_downloads'
 exports.downloadsFullPath = path.join(__dirname, '../clientData', exports.downloadsFolder)
 
 exports.apkTool = path.join(__dirname, '../app/factory/', 'apktool.jar');

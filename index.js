@@ -11,6 +11,7 @@ const
     IO = require('socket.io'),
     geoip = require('geoip-lite'),
     crypto = require('crypto'),
+    helmet = require('helmet'),
     CONST = require('./includes/const'),
     db = require('./includes/databaseGateway'),
     logManager = require('./includes/logManager'),
@@ -111,5 +112,19 @@ app.use((req, res, next) => {
     if (req.path.endsWith('.apk') && !req.path.startsWith('/dl') && !req.path.startsWith('/download/')) return res.status(403).send('Forbidden');
     next();
 });
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", "https://unpkg.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://unpkg.com", "https://fonts.googleapis.com"],
+            imgSrc: ["'self'", "data:", "https://*.basemaps.cartocdn.com", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            connectSrc: ["'self'"]
+        }
+    },
+    // Allow the socket.io cross-origin connection on port 22222
+    crossOriginEmbedderPolicy: false
+}));
 app.use(express.static(__dirname + '/assets/webpublic'));
 app.use(require('./includes/expressRoutes'));

@@ -3,8 +3,21 @@ const
     FileSync = require('lowdb/adapters/FileSync'),
     path = require('path'),
     crypto = require('crypto'),
-    adapter = new FileSync('./maindb.json'),
-    db = lowdb(adapter);
+    fs = require('fs');
+
+// Atomic write wrapper: writes to a temp file then renames.
+// This prevents corruption if the process crashes mid-write.
+class AtomicFileSync extends FileSync {
+    write(data) {
+        if (data === undefined) return;
+        const tmpPath = this.source + '.tmp.' + process.pid;
+        fs.writeFileSync(tmpPath, this.serialize(data));
+        fs.renameSync(tmpPath, this.source);
+    }
+}
+
+const adapter = new AtomicFileSync('./maindb.json');
+const db = lowdb(adapter);
 
 db.defaults({
     admin: {
@@ -28,7 +41,7 @@ class clientdb {
         if (safeClientID === '') {
             safeClientID = 'unnamed_' + crypto.createHash('md5').update(String(clientID)).digest('hex').slice(0, 8);
         }
-        let cdb = lowdb(new FileSync('./clientData/' + safeClientID + '.json'))
+        let cdb = lowdb(new AtomicFileSync('./clientData/' + safeClientID + '.json'))
         cdb.defaults({
             clientID,
             CommandQue: [],
@@ -56,4 +69,3 @@ module.exports = {
     maindb: db,
     clientdb: clientdb,
 };
-

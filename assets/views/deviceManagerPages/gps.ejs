@@ -74,6 +74,8 @@ pageData.forEach((item) => {
 
 %>
 
+<script type="application/json" id="gps-map-data"><%= JSON.stringify(sorted) %></script>
+
 <div class="ui bottom attached tab segment" data-tab="log">
     <div id="GPS_LOG_MAP" style="width: 100%; height: 500px;"></div>
     <script>
@@ -160,8 +162,9 @@ pageData.forEach((item) => {
         });
     }
 
-    var mapData = JSON.parse(`<%- JSON.stringify(sorted).replace(/`/g, '\\`') %>`);
-
+    // Safe injection: use a type="application/json" block that the browser won't execute,
+    // then parse it. This prevents XSS even with malicious GPS data.
+    var mapData = JSON.parse(document.getElementById('gps-map-data').textContent);
 
     loadLogToMap('<%= Object.keys(sorted)[Object.keys(sorted).length -1].replace(/'/g, "\\'") %>')
 </script>
