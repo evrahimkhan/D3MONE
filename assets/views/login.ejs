@@ -46,6 +46,28 @@
                             }
                         ]
                     }
+                },
+                onSuccess: function(event) {
+                    event.preventDefault();
+                    $.ajax({
+                        url: '/login',
+                        method: 'POST',
+                        data: {
+                            username: $('input[name=username]').val(),
+                            password: $('input[name=password]').val()
+                        },
+                        dataType: 'json',
+                        success: function(data) {
+                            if (data && data.error === false) {
+                                window.location.href = '/';
+                            } else {
+                                window.location.href = '/login?e=badLogin';
+                            }
+                        },
+                        error: function() {
+                            window.location.href = '/login?e=badLogin';
+                        }
+                    });
                 }
             });
         });

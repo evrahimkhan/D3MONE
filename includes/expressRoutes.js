@@ -2,7 +2,6 @@ const
     express = require('express'),
     routes = express.Router(),
     cookieParser = require('cookie-parser'),
-    bodyParser = require('body-parser'),
     crypto = require('crypto'),
     fs = require('fs'),
     path = require('path'),
@@ -16,25 +15,69 @@ let clientManager = global.clientManager;
 let apkBuilder = global.apkBuilder;
 
 app.use(cookieParser());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// CSRF: Double-submit cookie pattern.
+// On GET: set _csrf cookie with random token (readable by JS).
+// On POST: require X-CSRF-Token header to match _csrf cookie.
+// Blocks cross-origin form submissions since attacker cannot read the cookie.
+app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/css/') && !req.path.startsWith('/js/') && !req.path.startsWith('/logo')) {
+        let csrfToken = req.cookies._csrf;
+        if (!csrfToken || typeof csrfToken !== 'string' || csrfToken.length < 32) {
+            csrfToken = crypto.randomBytes(24).toString('hex');
+            res.cookie('_csrf', csrfToken, { httpOnly: false, sameSite: 'strict' });
+        }
+        res.locals.csrfToken = csrfToken;
+    }
+    if (req.method === 'POST') {
+        const headerToken = req.headers['x-csrf-token'];
+        const cookieToken = req.cookies._csrf;
+        // Timing-safe comparison for CSRF tokens
+        if (!headerToken || !cookieToken) {
+            return res.status(403).json({ error: 'CSRF token validation failed' });
+        }
+        try {
+            const hBuf = Buffer.from(String(headerToken), 'utf8');
+            const cBuf = Buffer.from(String(cookieToken), 'utf8');
+            if (hBuf.length !== cBuf.length || !crypto.timingSafeEqual(hBuf, cBuf)) {
+                return res.status(403).json({ error: 'CSRF token validation failed' });
+            }
+        } catch (e) {
+            return res.status(403).json({ error: 'CSRF token validation failed' });
+        }
+    }
+    next();
+});
 
 const loginLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 10, // 10 attempts per window per IP
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // 20 attempts per window per IP
     standardHeaders: true,
     legacyHeaders: false,
-    handler: (req, res) => res.redirect('/login?e=tooManyRequests')
+    handler: (req, res) => {
+        logManager.log(CONST.logTypes.alert, 'Rate limit hit for IP: ' + req.ip);
+        res.redirect('/login?e=tooManyRequests');
+    }
 });
 
 function isAllowed(req, res, next) {
     let cookies = req.cookies;
     let loginToken = db.maindb.get('admin.loginToken').value();
     if (loginToken && cookies && 'loginToken' in cookies && loginToken !== '') {
-        if (cookies.loginToken === loginToken) next();
-        else res.clearCookie('loginToken').redirect('/login');
+        // Timing-safe comparison to prevent byte-by-byte token guessing
+        try {
+            const tokenBuf = Buffer.from(String(cookies.loginToken), 'utf8');
+            const expectedBuf = Buffer.from(String(loginToken), 'utf8');
+            if (tokenBuf.length === expectedBuf.length && crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
+                return next();
+            }
+        } catch (e) {
+            // Buffer length mismatch falls through to redirect
+        }
+        res.clearCookie('loginToken').redirect('/login');
     } else res.redirect('/login');
-    // next();
 }
 
 routes.get('/dl', isAllowed, (req, res) => {
@@ -62,6 +105,7 @@ routes.post('/login', loginLimiter, (req, res) => {
     if ('username' in req.body && 'password' in req.body) {
         // Guard against non-string input (e.g., arrays, objects)
         if (typeof req.body.username !== 'string' || typeof req.body.password !== 'string') {
+            if (req.xhr || req.headers.accept?.includes('application/json')) return res.json({ error: 'badLogin' });
             return res.redirect('/login?e=badLogin');
         }
 
@@ -98,12 +142,23 @@ routes.post('/login', loginLimiter, (req, res) => {
                 db.maindb.get('admin').assign({ password: 'scrypt:' + salt.toString('hex') + ':' + derived.toString('hex') }).write();
             }
 
-            // Patch 2: Secure Session Token
             let loginToken = crypto.randomBytes(32).toString('hex');
             db.maindb.get('admin').assign({ loginToken }).write();
-            res.cookie('loginToken', loginToken, { httpOnly: true, sameSite: 'strict' }).redirect('/');
-        } else return res.redirect('/login?e=badLogin');
-    } else return res.redirect('/login?e=missingData');
+            logManager.log(CONST.logTypes.success, 'Admin login from IP: ' + req.ip);
+            res.cookie('loginToken', loginToken, { httpOnly: true, sameSite: 'strict' });
+            if (req.xhr || req.headers.accept?.includes('application/json')) {
+                return res.json({ error: false });
+            }
+            return res.redirect('/');
+        } else {
+            logManager.log(CONST.logTypes.alert, 'Failed login attempt from IP: ' + req.ip);
+            if (req.xhr || req.headers.accept?.includes('application/json')) return res.json({ error: 'badLogin' });
+            return res.redirect('/login?e=badLogin');
+        }
+    } else {
+        if (req.xhr || req.headers.accept?.includes('application/json')) return res.json({ error: 'missingData' });
+        return res.redirect('/login?e=missingData');
+    }
 });
 
 routes.get('/logout', isAllowed, (req, res) => {

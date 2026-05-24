@@ -95,9 +95,6 @@ client_io.on('connection', (socket) => {
 });
 
 
-// get the admin interface online
-app.listen(CONST.web_port);
-
 /* 
 *   
 *   
@@ -116,7 +113,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", "https://unpkg.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://unpkg.com"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://unpkg.com", "https://fonts.googleapis.com"],
             imgSrc: ["'self'", "data:", "https://*.basemaps.cartocdn.com", "https://*.tile.openstreetmap.org", "https://unpkg.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
@@ -124,7 +121,21 @@ app.use(helmet({
         }
     },
     // Allow the socket.io cross-origin connection on port 22222
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    // HSTS: tell browsers to always use HTTPS (only effective behind TLS)
+    hsts: { maxAge: 31536000, includeSubDomains: true }
 }));
 app.use(express.static(__dirname + '/assets/webpublic'));
 app.use(require('./includes/expressRoutes'));
+
+// Global error handler — catch unhandled route errors instead of crashing
+app.use((err, req, res, next) => {
+    console.error('Unhandled Express error:', err);
+    logManager.log(CONST.logTypes.error, 'Unhandled error on ' + req.method + ' ' + req.path + ': ' + (err.message || err));
+    if (!res.headersSent) {
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// Start the HTTP server after all middleware and routes are registered
+app.listen(CONST.web_port);

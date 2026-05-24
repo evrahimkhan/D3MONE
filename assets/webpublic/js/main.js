@@ -1,3 +1,16 @@
+// Read CSRF token from cookie
+function getCsrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)_csrf=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+// Auto-include CSRF token on all jQuery AJAX requests
+$.ajaxSetup({
+    beforeSend: function(xhr) {
+        xhr.setRequestHeader('X-CSRF-Token', getCsrfToken());
+    }
+});
+
 function sendCommand(commandID, params = {}, cb = () => { }) {
     let url = baseURL + '/' + commandID;
     $.post(url, params, function (data) {
