@@ -25,6 +25,12 @@ Thumbs.db
 # Environment
 .env
 
+# Tooling
+.claude/
+.opencode/
+.qwen/
+.openclaude/
+
 # Gemini / BMad
 .agents/
 _bmad/
