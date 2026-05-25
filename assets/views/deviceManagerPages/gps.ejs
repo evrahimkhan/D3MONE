@@ -47,7 +47,7 @@ if(pageData.length !== 0) {
         }).addTo(GPS_NOW_MAP);
         var currentLocationMarker = L.marker([<%= latest.latitude %>, <%= latest.longitude %>]).addTo(GPS_NOW_MAP);
 
-        currentLocationMarker.bindPopup("<b>Time:</b> <%= new Date(latest.time).toLocaleString('en-GB', { timeZone: 'UTC' }) %><br><b>speed:</b> <%= latest.speed.toFixed(2) %>mph<br><b>Accuracy:</b> <%= latest.accuracy.toFixed(2) %>m");
+        currentLocationMarker.bindPopup("<b>Time:</b> <%= new Date(latest.time).toLocaleString('en-GB', { timeZone: 'UTC' }) %><br><b>speed:</b> <%= (Number(latest.speed) || 0).toFixed(2) %>mph<br><b>Accuracy:</b> <%= (Number(latest.accuracy) || 0).toFixed(2) %>m");
     </script>
 </div>
 
@@ -166,5 +166,8 @@ pageData.forEach((item) => {
     // then parse it. This prevents XSS even with malicious GPS data.
     var mapData = JSON.parse(document.getElementById('gps-map-data').textContent);
 
-    loadLogToMap('<%= Object.keys(sorted)[Object.keys(sorted).length -1].replace(/'/g, "\\'") %>')
+    var sortedKeys = Object.keys(mapData);
+    if (sortedKeys.length > 0) {
+        loadLogToMap(sortedKeys[sortedKeys.length - 1]);
+    }
 </script>
