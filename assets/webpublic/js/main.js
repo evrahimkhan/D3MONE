@@ -13,9 +13,14 @@ $.ajaxSetup({
 
 function sendCommand(commandID, params = {}, cb = () => { }) {
     let url = baseURL + '/' + commandID;
+    console.log('[sendCommand] POST', url, params);
     $.post(url, params, function (data) {
+        console.log('[sendCommand] response:', data);
         if (data.error) return cb(data.error, undefined)
         else return cb(false, data.message);
+    }).fail(function(xhr, textStatus, errorThrown) {
+        console.error('[sendCommand] FAIL:', xhr.status, xhr.responseText);
+        cb('Request failed (' + xhr.status + ')', undefined);
     });
 }
 
