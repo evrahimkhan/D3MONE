@@ -127,14 +127,24 @@ routes.post('/login', loginLimiter, (req, res) => {
             }
         } else if (rPassword) {
             // Legacy MD5 — check and migrate on success
-            let passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
-            if (passwordMD5 === rPassword) {
+            const passwordMD5 = crypto.createHash('md5').update(String(req.body.password)).digest("hex");
+            const md5Buf = Buffer.from(passwordMD5, 'utf8');
+            const storedBuf = Buffer.from(rPassword, 'utf8');
+            if (md5Buf.length === storedBuf.length && crypto.timingSafeEqual(md5Buf, storedBuf)) {
                 passwordOK = true;
                 needsMigration = true;
             }
         }
 
-        if (String(req.body.username) === rUsername && passwordOK) {
+        // Timing-safe username comparison to match password comparison pattern
+        let usernameOK = false;
+        try {
+            const inputUserBuf = Buffer.from(String(req.body.username), 'utf8');
+            const storedUserBuf = Buffer.from(String(rUsername), 'utf8');
+            usernameOK = inputUserBuf.length === storedUserBuf.length && crypto.timingSafeEqual(inputUserBuf, storedUserBuf);
+        } catch (e) {}
+
+        if (usernameOK && passwordOK) {
             // Migrate MD5 to scrypt on successful login
             if (needsMigration) {
                 const salt = crypto.randomBytes(16);

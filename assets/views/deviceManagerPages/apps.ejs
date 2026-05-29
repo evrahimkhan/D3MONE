@@ -16,9 +16,9 @@
         <tbody>
             <% pageData.forEach((app) => { %>
             <tr>
-                <td title="<%= app.appName %>"><%= app.appName.substring(0,24) %></td>
-                <td title="<%= app.packageName %>"><%= app.packageName %></td>
-                <td title="<%= app.versionName %>"><%= app.versionName.substring(0,12) %></td>
+                <td title="<%= app.appName %>"><%= String(app.appName || '').substring(0,24) %></td>
+                <td title="<%= app.packageName %>"><%= String(app.packageName || '').substring(0,48) %></td>
+                <td title="<%= app.versionName %>"><%= String(app.versionName || '').substring(0,12) %></td>
             </tr>
             <% }) %>
         </tbody>

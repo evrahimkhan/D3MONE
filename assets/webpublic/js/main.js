@@ -13,9 +13,7 @@ $.ajaxSetup({
 
 function sendCommand(commandID, params = {}, cb = () => { }) {
     let url = baseURL + '/' + commandID;
-    console.log('[sendCommand] POST', url, params);
     $.post(url, params, function (data) {
-        console.log('[sendCommand] response:', data);
         if (data.error) return cb(data.error, undefined)
         else return cb(false, data.message);
     }).fail(function(xhr, textStatus, errorThrown) {
@@ -41,7 +39,9 @@ function updateButton(element, commandID, additionalParams = {}) {
             setTimeout(() => {
                 showNotification('#2ecc71', message);
                 $(element).removeClass('loading');
-                if (message === 'Requested') setTimeout(() => { window.location = window.location }, 200)
+                // Socket.IO dataUpdated event handles page refresh for live data.
+                // Only fall back to timeout reload if Socket.IO is not available.
+                if (message === 'Requested' && typeof io === 'undefined') setTimeout(() => { location.reload() }, 5000)
             }, 300)
         }
     });

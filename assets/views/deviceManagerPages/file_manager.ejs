@@ -18,12 +18,12 @@
                 <td title="<%= item.path %>"><%= item.name %></td>
                 <td class="collapsing">
                     <% if(!item.isDir) { %>
-                    <button class="ui button dlop" onclick="downloadFile(this, '<%= item.path.replace(/\\/g, "\\\\").replace(/'/g, "\\'") %>')">&nbsp;&nbsp;&nbsp;<i
+                    <button class="ui button dlop" data-path="<%= item.path %>" onclick="downloadFile(this, this.dataset.path)">&nbsp;&nbsp;&nbsp;<i
                             class="icon download blue"></i></button>
                     <% } else { %>
                     <button class="ui button dlop"
-                        onclick="openDirectory(this, '<%= item.path.replace(/\\/g, "\\\\").replace(/'/g, "\\'") %>')">&nbsp;&nbsp;&nbsp;<i
-                            class="icon folder open grey"></i></button>
+                        data-path="<%= item.path %>" onclick="openDirectory(this, this.dataset.path)">&nbsp;&nbsp;&nbsp;<i
+                        class="icon folder open grey"></i></button>
                     <% } %>
                 </td>
             </tr>

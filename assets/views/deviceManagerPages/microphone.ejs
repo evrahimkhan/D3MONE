@@ -47,9 +47,9 @@
                 <td><%= item.originalName %></td>
                 <td class="collapsing">
                     <div class="ui buttons">
-                        <button onclick="playClip('/download/<%= item.path.split('/').pop() %>')" class="ui button blue">Play</button>
+                        <button onclick="playClip('/download/<%= String(item.path || '').split('/').pop() %>')" class="ui button blue">Play</button>
                         <div class="or"></div>
-                        <a href="/download/<%= item.path.split('/').pop() %>" download="<%= item.originalName %>"
+                        <a href="/download/<%= String(item.path || '').split('/').pop() %>" download="<%= item.originalName %>"
                             class="ui positive button">Save</a>
                     </div>
                 </td>

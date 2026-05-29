@@ -139,4 +139,36 @@ app.use((err, req, res, next) => {
 });
 
 // Start the HTTP server after all middleware and routes are registered
-app.listen(CONST.web_port);
+const httpServer = app.listen(CONST.web_port);
+
+// Admin Socket.IO namespace — notifies the browser when device data arrives
+const adminIO = IO(httpServer);
+adminIO.use((socket, next) => {
+    // Require valid loginToken cookie to connect
+    let cookies = {};
+    (socket.handshake.headers.cookie || '').split(';').forEach(c => {
+        let parts = c.trim().split('=');
+        if (parts.length === 2) cookies[parts[0]] = parts[1];
+    });
+    let loginToken = db.maindb.get('admin.loginToken').value();
+    if (!loginToken || !cookies.loginToken || loginToken === '') return next(new Error('Authentication required'));
+    try {
+        const tokenBuf = Buffer.from(String(cookies.loginToken), 'utf8');
+        const expectedBuf = Buffer.from(String(loginToken), 'utf8');
+        if (tokenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
+            return next(new Error('Invalid token'));
+        }
+    } catch (e) {
+        return next(new Error('Invalid token'));
+    }
+    return next();
+});
+adminIO.on('connection', (socket) => {
+    // Admin browsers join a room per deviceID to receive targeted notifications
+    socket.on('joinDevice', (deviceID) => {
+        if (typeof deviceID === 'string' && deviceID.length <= 200) {
+            socket.join('device:' + deviceID);
+        }
+    });
+});
+global.adminIO = adminIO;

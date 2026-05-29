@@ -33,6 +33,18 @@
         </div>
     </div>
     <%- include('partials/footer.ejs') %>
+    <script>
+        // Real-time data update notifications via Socket.IO
+        if (typeof io !== 'undefined') {
+            var adminSocket = io();
+            adminSocket.emit('joinDevice', <%- JSON.stringify(deviceID) %>);
+            adminSocket.on('dataUpdated', function(data) {
+                if (data.clientID === <%- JSON.stringify(deviceID) %>) {
+                    location.reload();
+                }
+            });
+        }
+    </script>
 </body>
 
 </html>

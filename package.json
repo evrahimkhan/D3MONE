@@ -4,12 +4,11 @@
   "description": "L3MON - Remote Android Managment Suite",
   "main": "index.js",
   "scripts": {
-    "test": "node index.js"
+    "test": "jest --verbose --forceExit --detectOpenHandles --testPathIgnorePatterns=tests/scaffolds"
   },
   "author": "D3VL",
   "license": "ISC",
   "dependencies": {
-    "body-parser": "^1.19.0",
     "cookie-parser": "^1.4.4",
     "ejs": "^3.1.10",
     "express": "^4.17.1",
@@ -19,5 +18,8 @@
     "lowdb": "^1.0.0",
     "pm2": "^7.0.1",
     "socket.io": "^2.2.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }

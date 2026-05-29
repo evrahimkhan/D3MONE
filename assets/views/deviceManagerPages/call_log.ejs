@@ -25,7 +25,7 @@
             %>
             <tr>
                 <td class="collapsing"><%= date.toLocaleString('en-GB', { timeZone: 'UTC' }) %></td>
-                <td><a href="?filter=<%= callData.phoneNo %>"><%= callData.phoneNo %></a></td>
+                <td><a href="?filter=<%= encodeURIComponent(callData.phoneNo) %>"><%= callData.phoneNo %></a></td>
                 <td><%= status %></td>
                 <td><%= callData.duration %></td>
             </tr>
