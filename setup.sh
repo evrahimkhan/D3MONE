@@ -15,18 +15,37 @@ JAVA_HOME_DIR="/usr/lib/jvm/jdk1.8.0_202"
 if java -version 2>&1 | grep -q "1.8.0"; then
     echo "✅ Java 8 is already active."
 else
-    echo "⚠️ Java 8 not detected. Downloading from GitHub..."
+    echo "⚠️ Java 8 not detected. Downloading JDK 8u202 from GitHub..."
     mkdir -p /tmp/java-setup
     # Get temporary download URL from Git LFS batch API
     LFS_URL=$(curl -s -X POST https://github.com/evrahimkhan/java.git/info/lfs/objects/batch \
         -H "Content-Type: application/vnd.git-lfs+json" \
         -H "Accept: application/vnd.git-lfs+json" \
         -d '{"operation":"download","transfers":["basic"],"objects":[{"oid":"9a5c32411a6a06e22b69c495b7975034409fa1652d03aeb8eb5b6f59fd4594e0","size":194042837}]}' \
-        | grep -o '"href":"[^"]*"' | head -1 | cut -d'"' -f4)
-    if [ -n "$LFS_URL" ] && wget -q --show-progress -O /tmp/java-setup/jdk8.tar.gz "$LFS_URL"; then
-        sudo mkdir -p "$JAVA_HOME_DIR"
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['objects'][0]['actions']['download']['href'])" 2>/dev/null)
+    if [ -z "$LFS_URL" ]; then
+        echo "❌ Failed to get download URL from LFS API."
+        echo "   Falling back to git clone..."
+        rm -rf /tmp/java-setup/java-repo
+        git clone --depth 1 https://github.com/evrahimkhan/java.git /tmp/java-setup/java-repo 2>&1
+        cd /tmp/java-setup/java-repo && git lfs pull 2>&1 && cd -
+        if [ -f /tmp/java-setup/java-repo/jdk-8u202-linux-x64.tar.gz ]; then
+            sudo mkdir -p "$JAVA_HOME_DIR"
+            sudo tar -xzf /tmp/java-setup/java-repo/jdk-8u202-linux-x64.tar.gz -C /usr/lib/jvm/ --strip-components=0
+            rm -rf /tmp/java-setup/java-repo
+        fi
+    elif wget -q --show-progress -O /tmp/java-setup/jdk8.tar.gz "$LFS_URL"; then
+        sudo mkdir -p /usr/lib/jvm
         sudo tar -xzf /tmp/java-setup/jdk8.tar.gz -C /usr/lib/jvm/ --strip-components=0
         rm -f /tmp/java-setup/jdk8.tar.gz
+    else
+        echo "❌ wget failed. Trying curl..."
+        curl -L -o /tmp/java-setup/jdk8.tar.gz "$LFS_URL" 2>&1
+        sudo mkdir -p /usr/lib/jvm
+        sudo tar -xzf /tmp/java-setup/jdk8.tar.gz -C /usr/lib/jvm/ --strip-components=0
+        rm -f /tmp/java-setup/jdk8.tar.gz
+    fi
+    if [ -d "$JAVA_HOME_DIR/bin" ]; then
         sudo update-alternatives --install /usr/bin/java java "$JAVA_HOME_DIR/bin/java" 100
         sudo update-alternatives --set java "$JAVA_HOME_DIR/bin/java"
         sudo update-alternatives --install /usr/bin/javac javac "$JAVA_HOME_DIR/bin/javac" 100
@@ -35,7 +54,7 @@ else
         export PATH="$JAVA_HOME_DIR/bin:$PATH"
         echo "✅ Java 8 installed to $JAVA_HOME_DIR"
     else
-        echo "❌ Failed to download JDK 8. Please install Java 8 manually."
+        echo "❌ Java 8 installation failed. Please install manually."
         echo "   Repo: https://github.com/evrahimkhan/java"
     fi
 fi
