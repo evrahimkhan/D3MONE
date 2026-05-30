@@ -9,24 +9,29 @@ echo "🚀 Starting L3MON One-Time Setup..."
 echo "📦 Installing system dependencies..."
 sudo apt update && sudo apt install -y wget curl git npm nodejs
 
-# 2. Java 8 Check/Installation
+# 2. Java 8 Check/Installation (download from Adoptium — no apt needed)
 echo "☕ Checking Java 8..."
+JAVA_HOME_DIR="/usr/lib/jvm/temurin-8"
 if java -version 2>&1 | grep -q "1.8.0"; then
     echo "✅ Java 8 is already active."
 else
-    echo "⚠️ Java 8 not detected as default. Setting up..."
-    # If the user has the tarball in a predictable place, we could use it, 
-    # but for a general script, we'll try to install via apt if available 
-    # or guide the user. Since I already set it up system-wide:
-    if [ -d "/usr/lib/jvm/jdk1.8.0_202" ]; then
-        sudo update-alternatives --install /usr/bin/java java /usr/lib/jvm/jdk1.8.0_202/bin/java 100
-        sudo update-alternatives --set java /usr/lib/jvm/jdk1.8.0_202/bin/java
-        sudo update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/jdk1.8.0_202/bin/javac 100
-        sudo update-alternatives --set javac /usr/lib/jvm/jdk1.8.0_202/bin/javac
-        echo "✅ Java 8 configured from /usr/lib/jvm/jdk1.8.0_202"
+    echo "⚠️ Java 8 not detected. Downloading from Adoptium..."
+    mkdir -p /tmp/java-setup
+    JDK_URL="https://api.adoptium.net/v3/binary/latest/8/ga/linux/x64/jdk/hotspot/normal/adoptium"
+    if wget -q --show-progress -O /tmp/java-setup/jdk8.tar.gz "$JDK_URL"; then
+        sudo mkdir -p "$JAVA_HOME_DIR"
+        sudo tar -xzf /tmp/java-setup/jdk8.tar.gz -C "$JAVA_HOME_DIR" --strip-components=1
+        rm -f /tmp/java-setup/jdk8.tar.gz
+        sudo update-alternatives --install /usr/bin/java java "$JAVA_HOME_DIR/bin/java" 100
+        sudo update-alternatives --set java "$JAVA_HOME_DIR/bin/java"
+        sudo update-alternatives --install /usr/bin/javac javac "$JAVA_HOME_DIR/bin/javac" 100
+        sudo update-alternatives --set javac "$JAVA_HOME_DIR/bin/javac"
+        export JAVA_HOME="$JAVA_HOME_DIR"
+        export PATH="$JAVA_HOME_DIR/bin:$PATH"
+        echo "✅ Java 8 installed to $JAVA_HOME_DIR"
     else
-        echo "❌ Java 8 not found in /usr/lib/jvm/jdk1.8.0_202."
-        echo "Please install Java 8 (1.8.0) to ensure APK building works."
+        echo "❌ Failed to download JDK 8. Please install Java 8 manually."
+        echo "   Download from: https://adoptium.net/temurin/releases/?version=8"
     fi
 fi
 
@@ -39,7 +44,7 @@ npm install socket.io@2.2.0 --save # Force correct version for this codebase
 echo "📦 Decompiling base.apk for APK builder..."
 if [ -f "app/factory/base.apk" ] && [ -f "app/factory/apktool.jar" ]; then
     if [ ! -d "app/factory/decompiled/smali" ]; then
-        java -jar app/factory/apktool.jar d app/factory/base.apk -o app/factory/decompiled -f
+        "$JAVA_HOME_DIR/bin/java" -jar app/factory/apktool.jar d app/factory/base.apk -o app/factory/decompiled -f
         echo "✅ base.apk decompiled."
     else
         echo "✅ Decompiled directory already exists."
