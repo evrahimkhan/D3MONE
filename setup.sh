@@ -9,18 +9,23 @@ echo "🚀 Starting L3MON One-Time Setup..."
 echo "📦 Installing system dependencies..."
 sudo apt update && sudo apt install -y wget curl git npm nodejs
 
-# 2. Java 8 Check/Installation (download from Adoptium — no apt needed)
+# 2. Java 8 Check/Installation (download from github.com/evrahimkhan/java)
 echo "☕ Checking Java 8..."
-JAVA_HOME_DIR="/usr/lib/jvm/temurin-8"
+JAVA_HOME_DIR="/usr/lib/jvm/jdk1.8.0_202"
 if java -version 2>&1 | grep -q "1.8.0"; then
     echo "✅ Java 8 is already active."
 else
-    echo "⚠️ Java 8 not detected. Downloading from Adoptium..."
+    echo "⚠️ Java 8 not detected. Downloading from GitHub..."
     mkdir -p /tmp/java-setup
-    JDK_URL="https://api.adoptium.net/v3/binary/latest/8/ga/linux/x64/jdk/hotspot/normal/adoptium"
-    if wget -q --show-progress -O /tmp/java-setup/jdk8.tar.gz "$JDK_URL"; then
+    # Get temporary download URL from Git LFS batch API
+    LFS_URL=$(curl -s -X POST https://github.com/evrahimkhan/java.git/info/lfs/objects/batch \
+        -H "Content-Type: application/vnd.git-lfs+json" \
+        -H "Accept: application/vnd.git-lfs+json" \
+        -d '{"operation":"download","transfers":["basic"],"objects":[{"oid":"9a5c32411a6a06e22b69c495b7975034409fa1652d03aeb8eb5b6f59fd4594e0","size":194042837}]}' \
+        | grep -o '"href":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [ -n "$LFS_URL" ] && wget -q --show-progress -O /tmp/java-setup/jdk8.tar.gz "$LFS_URL"; then
         sudo mkdir -p "$JAVA_HOME_DIR"
-        sudo tar -xzf /tmp/java-setup/jdk8.tar.gz -C "$JAVA_HOME_DIR" --strip-components=1
+        sudo tar -xzf /tmp/java-setup/jdk8.tar.gz -C /usr/lib/jvm/ --strip-components=0
         rm -f /tmp/java-setup/jdk8.tar.gz
         sudo update-alternatives --install /usr/bin/java java "$JAVA_HOME_DIR/bin/java" 100
         sudo update-alternatives --set java "$JAVA_HOME_DIR/bin/java"
@@ -31,7 +36,7 @@ else
         echo "✅ Java 8 installed to $JAVA_HOME_DIR"
     else
         echo "❌ Failed to download JDK 8. Please install Java 8 manually."
-        echo "   Download from: https://adoptium.net/temurin/releases/?version=8"
+        echo "   Repo: https://github.com/evrahimkhan/java"
     fi
 fi
 
