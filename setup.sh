@@ -46,10 +46,14 @@ else
         rm -f /tmp/java-setup/jdk8.tar.gz
     fi
     if [ -d "$JAVA_HOME_DIR/bin" ]; then
-        sudo update-alternatives --install /usr/bin/java java "$JAVA_HOME_DIR/bin/java" 2000
+        # Remove existing alternatives and force Java 8 as default
+        sudo update-alternatives --install /usr/bin/java java "$JAVA_HOME_DIR/bin/java" 9999
         sudo update-alternatives --set java "$JAVA_HOME_DIR/bin/java"
-        sudo update-alternatives --install /usr/bin/javac javac "$JAVA_HOME_DIR/bin/javac" 2000
+        sudo update-alternatives --install /usr/bin/javac javac "$JAVA_HOME_DIR/bin/javac" 9999
         sudo update-alternatives --set javac "$JAVA_HOME_DIR/bin/javac"
+        # Also override /usr/bin/java directly if alternatives didn't work
+        sudo ln -sf "$JAVA_HOME_DIR/bin/java" /usr/bin/java
+        sudo ln -sf "$JAVA_HOME_DIR/bin/javac" /usr/bin/javac
         export JAVA_HOME="$JAVA_HOME_DIR"
         export PATH="$JAVA_HOME_DIR/bin:$PATH"
         # Persist for PM2 and future sessions
@@ -57,6 +61,7 @@ else
             echo "export JAVA_HOME=$JAVA_HOME_DIR" >> ~/.bashrc
             echo "export PATH=$JAVA_HOME_DIR/bin:\$PATH" >> ~/.bashrc
         fi
+        source ~/.bashrc 2>/dev/null || true
         echo "✅ Java 8 installed to $JAVA_HOME_DIR"
     else
         echo "❌ Java 8 installation failed. Please install manually."
